@@ -139,17 +139,17 @@ enum class PatternSlot(val label: String) {
 
 @Serializable
 enum class DrumGenre(val label: String) {
-    ROCK("Rock & Indie"),
-    POST_PUNK("Post-Punk & Wave"),
-    REGGAE_SKA("Reggae & Ska"),
+    ROCK("Rock"),
+    POP("Indie & Pop"),
+    EDM("Electronic"),
     HIP_HOP("Rap & Hip-Hop"),
-    EDM("Techno & Trance"),
-    POP("Pop"),
-    FUNK("Funk & Soul"),
+    REGGAE_SKA("Reggae & Ska"),
+    FUNK("Funk & R&B"),
     JAZZ("Jazz & Blues"),
     LATIN("Latin"),
-    METAL("Metal"),
     ODD_TIME("Odd Time"),
+    POST_PUNK("Post-Punk"),
+    METAL("Metal"),
     AFRO_RNB("Afro & R&B"),
     CUSTOM("My Presets")
 }
@@ -332,6 +332,7 @@ data class DrumPreset(
     val id: String,
     val name: String,
     val genre: DrumGenre,
+    val subcategory: String = "",
     val bpm: Int,
     val swing: Float = 0f,
     val timeSignature: TimeSignature = TimeSignature.FOUR_FOUR,

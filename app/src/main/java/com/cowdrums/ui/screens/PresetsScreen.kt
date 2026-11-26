@@ -69,16 +69,30 @@ fun PresetsScreen(
     onDeleteCustomPreset: (DrumPreset) -> Unit
 ) {
     var selectedGenre by remember { mutableStateOf<DrumGenre?>(null) }
+    var selectedSubcategory by remember { mutableStateOf<String?>(null) }
     var searchQuery by remember { mutableStateOf("") }
 
-    val filtered = remember(state.allPresets, selectedGenre, searchQuery) {
+    val subcategoriesForGenre = remember(state.allPresets, selectedGenre) {
+        if (selectedGenre == null) {
+            emptyList()
+        } else {
+            state.allPresets
+                .filter { it.genre == selectedGenre && it.subcategory.isNotBlank() }
+                .map { it.subcategory }
+                .distinct()
+        }
+    }
+
+    val filtered = remember(state.allPresets, selectedGenre, selectedSubcategory, searchQuery) {
         state.allPresets.filter { preset ->
             val genreOk = selectedGenre == null || preset.genre == selectedGenre
+            val subOk = selectedSubcategory == null || preset.subcategory == selectedSubcategory
             val queryOk = searchQuery.isBlank() ||
                 preset.name.contains(searchQuery, ignoreCase = true) ||
                 preset.description.contains(searchQuery, ignoreCase = true) ||
-                preset.genre.label.contains(searchQuery, ignoreCase = true)
-            genreOk && queryOk
+                preset.genre.label.contains(searchQuery, ignoreCase = true) ||
+                preset.subcategory.contains(searchQuery, ignoreCase = true)
+            genreOk && subOk && queryOk
         }
     }
 
@@ -123,7 +137,7 @@ fun PresetsScreen(
                 .padding(horizontal = 10.dp, vertical = 6.dp)
         )
 
-        // Genre Filter Chips (Monochrome + Single Orange Active)
+        // Row 1: Main Genre Filter Chips
         LazyRow(
             contentPadding = PaddingValues(horizontal = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -131,18 +145,57 @@ fun PresetsScreen(
         ) {
             item {
                 GenreChip(
-                    label = "All",
+                    label = "All (${state.allPresets.size})",
                     selected = selectedGenre == null,
-                    onClick = { selectedGenre = null }
+                    onClick = {
+                        selectedGenre = null
+                        selectedSubcategory = null
+                    }
                 )
             }
             items(DrumGenre.entries) { genre ->
                 val count = state.allPresets.count { it.genre == genre }
                 if (count > 0) {
                     GenreChip(
-                        label = genre.label,
+                        label = "${genre.label} ($count)",
                         selected = selectedGenre == genre,
-                        onClick = { selectedGenre = if (selectedGenre == genre) null else genre }
+                        onClick = {
+                            if (selectedGenre == genre) {
+                                selectedGenre = null
+                                selectedSubcategory = null
+                            } else {
+                                selectedGenre = genre
+                                selectedSubcategory = null
+                            }
+                        }
+                    )
+                }
+            }
+        }
+
+        // Row 2: Subcategory Filter Chips (appears automatically when a Genre with subcategories is selected)
+        if (subcategoriesForGenre.size > 1) {
+            Spacer(Modifier.height(6.dp))
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                item {
+                    SubcategoryChip(
+                        label = "All ${selectedGenre?.label.orEmpty()}",
+                        selected = selectedSubcategory == null,
+                        onClick = { selectedSubcategory = null }
+                    )
+                }
+                items(subcategoriesForGenre) { sub ->
+                    val count = state.allPresets.count { it.genre == selectedGenre && it.subcategory == sub }
+                    SubcategoryChip(
+                        label = "$sub ($count)",
+                        selected = selectedSubcategory == sub,
+                        onClick = {
+                            selectedSubcategory = if (selectedSubcategory == sub) null else sub
+                        }
                     )
                 }
             }
@@ -192,6 +245,7 @@ fun PresetsScreen(
 
                     Spacer(Modifier.width(14.dp))
 
+                    val catLabel = preset.subcategory.ifBlank { preset.genre.label }
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = preset.name,
@@ -202,7 +256,7 @@ fun PresetsScreen(
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "${preset.genre.label}  ·  ${preset.bpm} BPM  ·  ${preset.timeSignature.label}  ·  ${preset.recommendedKit.displayName}",
+                            text = "$catLabel  ·  ${preset.bpm} BPM  ·  ${preset.timeSignature.label}  ·  ${preset.recommendedKit.displayName}",
                             color = CowColors.TextSecondary,
                             fontSize = 11.sp,
                             maxLines = 1,
@@ -295,6 +349,32 @@ private fun GenreChip(label: String, selected: Boolean, onClick: () -> Unit) {
             text = label,
             color = if (selected) Color.White else CowColors.TextSecondary,
             fontSize = 12.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+        )
+    }
+}
+
+@Composable
+private fun SubcategoryChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(
+                if (selected) CowColors.AccentOrange.copy(alpha = 0.22f) else Color.Transparent
+            )
+            .border(
+                1.dp,
+                if (selected) CowColors.AccentOrange else CowColors.BorderSubtle,
+                RoundedCornerShape(14.dp)
+            )
+            .clickable { onClick() }
+            .padding(horizontal = 10.dp, vertical = 4.dp)
+    ) {
+        Text(
+            text = label,
+            color = if (selected) CowColors.AccentOrange else CowColors.TextSecondary,
+            fontSize = 11.sp,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
         )
     }
