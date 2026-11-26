@@ -79,15 +79,16 @@ class DrumMachineViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     init {
-        val defaultKit = BuiltInKit.ACOUSTIC
-        val initialSamples = BuiltInKitSynthesizer.renderKit(defaultKit)
-        kitCache[defaultKit] = initialSamples
-        audioEngine.setKitSamples(initialSamples)
+        val defaultKit = BuiltInKit.ROOM
         audioEngine.setMixerState(_uiState.value.mixer)
         pushSequencerSnapshot(_uiState.value)
         audioEngine.startEngine()
 
         viewModelScope.launch(Dispatchers.IO) {
+            val realSamples = loadBuiltInKitSamples(defaultKit)
+            kitCache[defaultKit] = realSamples
+            audioEngine.setKitSamples(realSamples)
+
             val customPresets = repo.loadCustomPresets()
             val savedSong = repo.loadSongSections().ifEmpty { defaultDemoSong() }
             val sf2s = repo.listLoadedSoundFonts()
@@ -95,11 +96,26 @@ class DrumMachineViewModel(application: Application) : AndroidViewModel(applicat
                 val merged = customPresets + PresetLibrary.builtInPresets
                 state.copy(
                     allPresets = merged,
+                    soundSource = SoundSource.BuiltIn(defaultKit),
                     songSections = savedSong,
                     loadedSoundFonts = sf2s
                 )
             }
             pushSequencerSnapshot(_uiState.value)
+        }
+    }
+
+    private fun loadBuiltInKitSamples(kit: BuiltInKit): Map<DrumInstrument, FloatArray> {
+        val sf2Bytes = repo.loadBundledSf2Bytes()
+        return if (sf2Bytes != null) {
+            SoundFont2Parser.loadKitSamples(
+                bytes = sf2Bytes,
+                bank = 128,
+                preset = kit.sf2Preset,
+                applyLoFi = kit.applyLoFiFilter
+            )
+        } else {
+            BuiltInKitSynthesizer.renderKit(kit)
         }
     }
 
@@ -336,8 +352,8 @@ class DrumMachineViewModel(application: Application) : AndroidViewModel(applicat
         }
         viewModelScope.launch {
             _uiState.update { it.copy(isLoadingSound = true) }
-            val samples = withContext(Dispatchers.Default) {
-                BuiltInKitSynthesizer.renderKit(kit)
+            val samples = withContext(Dispatchers.IO) {
+                loadBuiltInKitSamples(kit)
             }
             kitCache[kit] = samples
             audioEngine.setKitSamples(samples)

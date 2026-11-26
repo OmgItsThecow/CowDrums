@@ -153,15 +153,23 @@ enum class DrumGenre(val label: String) {
 }
 
 @Serializable
-enum class BuiltInKit(val displayName: String, val subtitle: String) {
-    ACOUSTIC("Standard Acoustic", "Warm studio maple kit"),
-    TR_808("TR-808 Classic", "Boomy sub-kick & analog hats"),
-    TR_909("TR-909 Club", "Punchy house/techno drums"),
-    ROCK_METAL("Rock & Metal", "Attack kick & cracking snare"),
-    JAZZ_BRUSH("Jazz & Brush", "Tight bebop & shimmering ride"),
-    ELECTRONIC("Modern EDM", "Tight sub & crisp claps"),
-    LATIN("Latin Percussion", "Tuned toms, rim & bright clave"),
-    LOFI("Lo-Fi Boom-Bap", "Dusty warm bit-crushed kit")
+enum class BuiltInKit(
+    val displayName: String,
+    val subtitle: String,
+    val sf2Preset: Int,
+    val applyLoFiFilter: Boolean = false
+) {
+    ACOUSTIC("Standard Studio", "Real acoustic studio drum kit (SF2)", 0),
+    ROOM("Live Room Rock", "Natural resonant room acoustic kit (SF2)", 8),
+    ROCK_METAL("Power Rock & Metal", "Heavy punchy acoustic rock/metal kit (SF2)", 16),
+    JAZZ_BRUSH("Jazz Acoustic", "Warm bebop & fusion acoustic kit (SF2)", 32),
+    BRUSH("Jazz Brush", "Real brushed snare & mellow jazz kit (SF2)", 40),
+    TR_808("TR-808 / 909", "Classic analog drum machine samples (SF2)", 25),
+    TR_909("Club Dance", "Punchy house & club drum samples (SF2)", 26),
+    ELECTRONIC("Electronic", "Crisp modern electronic kit (SF2)", 24),
+    LATIN("Standard 2 / Latin", "Bright acoustic kit with rim & perc (SF2)", 1),
+    ORCHESTRAL("Orchestral", "Concert bass drum, snare & cymbals (SF2)", 48),
+    LOFI("Lo-Fi Warm", "Vintage tape-filtered acoustic kit (SF2)", 0, applyLoFiFilter = true)
 }
 
 data class SoundFontPresetInfo(

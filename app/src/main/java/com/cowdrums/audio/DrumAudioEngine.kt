@@ -366,11 +366,25 @@ class DrumAudioEngine(
         return (sixteenthSeconds * SAMPLE_RATE).coerceAtLeast(256.0)
     }
 
+    private var humanizeSeed: Int = 0x5A3C91E7
+
+    private fun nextHumanizeFactor(): Float {
+        // Fast lock-free xorshift32 for subtle +-5% natural drummer velocity feel
+        var x = humanizeSeed
+        x = x xor (x shl 13)
+        x = x xor (x ushr 17)
+        x = x xor (x shl 5)
+        humanizeSeed = x
+        val norm = ((x and 0xFFFF) / 65535f) * 2f - 1f // -1..+1
+        return 1f + norm * 0.055f
+    }
+
     private fun triggerStep(pattern: StepPattern, step: Int) {
         for (inst in DrumInstrument.ALL) {
             val velLevel = pattern.velocityAt(inst, step)
             if (velLevel > 0) {
-                spawnDrumVoice(inst, StepVelocity.toGain(velLevel))
+                val baseGain = StepVelocity.toGain(velLevel)
+                spawnDrumVoice(inst, (baseGain * nextHumanizeFactor()).coerceIn(0.08f, 1.0f))
             }
         }
     }

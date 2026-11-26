@@ -107,4 +107,35 @@ class PresetLibraryAndSynthTest {
         assertEquals("MThd", String(midBytes, 0, 4, Charsets.US_ASCII))
         assertEquals("MTrk", String(midBytes, 14, 4, Charsets.US_ASCII))
     }
+
+    @Test
+    fun bundledGeneralUserSf2LoadsAllElevenRealKits() {
+        val sf2File = File("src/main/assets/soundfonts/GeneralUser_GS_Drums.sf2")
+        assertTrue("Bundled SF2 missing at ${sf2File.absolutePath}", sf2File.exists())
+
+        val presets = SoundFont2Parser.listPresets(sf2File)
+        assertEquals("Expected 10 real studio drum kits in bundled SF2", 10, presets.size)
+
+        val bytes = sf2File.readBytes()
+        for (kit in BuiltInKit.entries) {
+            val samples = SoundFont2Parser.loadKitSamples(
+                bytes = bytes,
+                bank = 128,
+                preset = kit.sf2Preset,
+                applyLoFi = kit.applyLoFiFilter
+            )
+            assertEquals("Kit $kit missing instruments", DrumInstrument.ALL.size, samples.size)
+            for (inst in DrumInstrument.ALL) {
+                val pcm = samples[inst]!!
+                assertTrue("Sample too short for $kit/$inst", pcm.size > 500)
+                var maxAbs = 0f
+                for (s in pcm) {
+                    assertTrue("Non-finite sample in $kit/$inst", s.isFinite())
+                    val a = abs(s)
+                    if (a > maxAbs) maxAbs = a
+                }
+                assertTrue("Silent sample in $kit/$inst", maxAbs > 0.2f)
+            }
+        }
+    }
 }

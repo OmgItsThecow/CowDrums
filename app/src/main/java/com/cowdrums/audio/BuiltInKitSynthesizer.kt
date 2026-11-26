@@ -81,21 +81,21 @@ object BuiltInKitSynthesizer {
             BuiltInKit.TR_808 -> 145.0
             BuiltInKit.TR_909 -> 220.0
             BuiltInKit.ROCK_METAL -> 260.0
-            BuiltInKit.JAZZ_BRUSH -> 150.0
+            BuiltInKit.JAZZ_BRUSH, BuiltInKit.BRUSH -> 150.0
             BuiltInKit.ELECTRONIC -> 210.0
             BuiltInKit.LATIN -> 160.0
             BuiltInKit.LOFI -> 155.0
-            BuiltInKit.ACOUSTIC -> 185.0
+            else -> 185.0
         }
         val endFreq = when (kit) {
             BuiltInKit.TR_808 -> 41.0
             BuiltInKit.TR_909 -> 49.0
             BuiltInKit.ROCK_METAL -> 54.0
-            BuiltInKit.JAZZ_BRUSH -> 64.0
+            BuiltInKit.JAZZ_BRUSH, BuiltInKit.BRUSH -> 64.0
             BuiltInKit.ELECTRONIC -> 44.0
             BuiltInKit.LATIN -> 58.0
             BuiltInKit.LOFI -> 50.0
-            BuiltInKit.ACOUSTIC -> 52.0
+            else -> 52.0
         }
         val pitchDecay = when (kit) {
             BuiltInKit.TR_808 -> 24.0

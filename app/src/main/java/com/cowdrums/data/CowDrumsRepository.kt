@@ -27,6 +27,16 @@ class CowDrumsRepository(private val context: Context) {
     private val soundFontsDir: File
         get() = File(context.filesDir, "soundfonts").apply { mkdirs() }
 
+    @Volatile
+    private var bundledSf2Cache: ByteArray? = null
+
+    fun loadBundledSf2Bytes(): ByteArray? {
+        bundledSf2Cache?.let { return it }
+        return runCatching {
+            context.assets.open("soundfonts/GeneralUser_GS_Drums.sf2").use { it.readBytes() }
+        }.getOrNull()?.also { bundledSf2Cache = it }
+    }
+
     fun loadCustomPresets(): List<DrumPreset> {
         if (!customPresetsFile.exists()) return emptyList()
         return runCatching {
