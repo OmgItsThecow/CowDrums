@@ -1,12 +1,10 @@
 package com.cowdrums.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -19,22 +17,31 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.GraphicEq
-import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,21 +50,36 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.cowdrums.model.SoundSource
 import com.cowdrums.ui.theme.CowColors
 import com.cowdrums.viewmodel.DrumMachineUiState
 
+/**
+ * Clean single-row top bar matching SF Drum Machine's minimal dark hardware aesthetic:
+ * [Title] | [Play/Stop] [BPM] [SoundFont] [Mixer] [Menu]
+ */
 @Composable
 fun TransportBar(
+    title: String,
+    showBackArrow: Boolean,
+    onBackClick: () -> Unit,
     state: DrumMachineUiState,
     onTogglePlay: () -> Unit,
-    onBpmDelta: (Int) -> Unit,
+    onBpmChange: (Int) -> Unit,
     onTapTempo: () -> Unit,
-    onToggleMetronome: () -> Unit,
-    onOpenKitPicker: () -> Unit
+    onSwingChange: (Float) -> Unit,
+    onOpenKitPicker: () -> Unit,
+    onToggleMixer: () -> Unit,
+    mixerOpen: Boolean,
+    onExportWav: () -> Unit,
+    onExportMidi: () -> Unit,
+    onImportSf2: () -> Unit
 ) {
+    var showBpmDialog by remember { mutableStateOf(false) }
+    var showOverflowMenu by remember { mutableStateOf(false) }
+
     Surface(
         color = CowColors.SurfacePanel,
-        tonalElevation = 4.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
@@ -66,236 +88,242 @@ fun TransportBar(
                 .windowInsetsPadding(
                     WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
                 )
-                .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
-            // Top row: Brand + Active Preset + Kit Picker Pill
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .padding(horizontal = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(
-                        text = "COWDRUMS",
-                        color = CowColors.AccentAmber,
-                        fontWeight = FontWeight.Black,
-                        fontSize = 13.sp,
-                        letterSpacing = 1.2.sp
-                    )
+                if (showBackArrow) {
+                    IconButton(onClick = onBackClick, modifier = Modifier.size(38.dp)) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = CowColors.TextPrimary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                } else {
                     Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = if (state.songMode) "SONG MODE" else state.activePreset.name,
-                        color = CowColors.TextPrimary,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 13.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
                 }
 
-                // Kit / SF2 selector pill
-                Row(
+                // Title (Preset / Mode)
+                Text(
+                    text = title,
+                    color = CowColors.TextPrimary,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 17.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+
+                // Subtle vertical divider (signature SF Drum Machine detail)
+                Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(CowColors.SurfaceCard)
-                        .border(1.dp, CowColors.BorderSubtle, RoundedCornerShape(16.dp))
-                        .clickable { onOpenKitPicker() }
-                        .padding(horizontal = 10.dp, vertical = 5.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.LibraryMusic,
-                        contentDescription = "Sound Kit",
-                        tint = CowColors.AccentCyan,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(Modifier.width(5.dp))
-                    Text(
-                        text = if (state.isLoadingSound) "Loading..." else state.soundSource.label,
-                        color = CowColors.TextPrimary,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
+                        .padding(horizontal = 6.dp)
+                        .width(1.dp)
+                        .height(30.dp)
+                        .background(CowColors.BorderSubtle)
+                )
 
-            Spacer(Modifier.height(8.dp))
-
-            // Second row: Play/Stop + BPM +/- + TAP + Metronome
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // Play / Stop Button
-                Button(
-                    onClick = onTogglePlay,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (state.isPlaying) CowColors.AccentCoral else CowColors.AccentGreen,
-                        contentColor = Color.White
-                    ),
-                    shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
-                    modifier = Modifier.height(38.dp)
-                ) {
+                // Play / Stop Triangle
+                IconButton(onClick = onTogglePlay, modifier = Modifier.size(40.dp)) {
                     Icon(
                         imageVector = if (state.isPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
                         contentDescription = if (state.isPlaying) "Stop" else "Play",
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        text = if (state.isPlaying) "STOP" else "PLAY",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp
+                        tint = if (state.isPlaying) CowColors.AccentOrange else CowColors.TextPrimary,
+                        modifier = Modifier.size(28.dp)
                     )
                 }
 
-                // BPM Stepper
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
+                // BPM stacked label (tap to open BPM / Tap Tempo / Swing dialog)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
-                        .height(38.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(CowColors.SurfaceCard)
-                        .border(1.dp, CowColors.BorderSubtle, RoundedCornerShape(10.dp))
-                ) {
-                    IconButton(
-                        onClick = { onBpmDelta(-1) },
-                        modifier = Modifier.size(34.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Remove,
-                            contentDescription = "Decrease BPM",
-                            tint = CowColors.TextPrimary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(horizontal = 4.dp)
-                    ) {
-                        Text(
-                            text = "${state.bpm}",
-                            color = CowColors.AccentAmber,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 15.sp,
-                            lineHeight = 15.sp
-                        )
-                        Text(
-                            text = "BPM",
-                            color = CowColors.TextMuted,
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.Bold,
-                            lineHeight = 9.sp
-                        )
-                    }
-                    IconButton(
-                        onClick = { onBpmDelta(1) },
-                        modifier = Modifier.size(34.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Add,
-                            contentDescription = "Increase BPM",
-                            tint = CowColors.TextPrimary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
-
-                // Tap Tempo Button
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .height(38.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(CowColors.SurfaceCard)
-                        .border(1.dp, CowColors.BorderSubtle, RoundedCornerShape(10.dp))
-                        .clickable { onTapTempo() }
-                        .padding(horizontal = 12.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable { showBpmDialog = true }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Text(
-                        text = "TAP",
+                        text = "BPM",
+                        color = CowColors.TextSecondary,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium,
+                        lineHeight = 11.sp
+                    )
+                    Text(
+                        text = "${state.bpm}",
                         color = CowColors.TextPrimary,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        lineHeight = 15.sp
                     )
                 }
 
-                Spacer(Modifier.weight(1f))
-
-                // Metronome Toggle
+                // SoundFont label ("Default" or loaded .sf2 name)
+                val sfLabel = when (val src = state.soundSource) {
+                    is SoundSource.BuiltIn -> "Default"
+                    is SoundSource.SoundFont -> src.displayName
+                }
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
-                        .height(38.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(
-                            if (state.metronomeEnabled) CowColors.AccentCyan.copy(alpha = 0.22f)
-                            else CowColors.SurfaceCard
-                        )
-                        .border(
-                            1.dp,
-                            if (state.metronomeEnabled) CowColors.AccentCyan else CowColors.BorderSubtle,
-                            RoundedCornerShape(10.dp)
-                        )
-                        .clickable { onToggleMetronome() }
-                        .padding(horizontal = 10.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable { onOpenKitPicker() }
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.GraphicEq,
-                            contentDescription = "Metronome",
-                            tint = if (state.metronomeEnabled) CowColors.AccentCyan else CowColors.TextSecondary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            text = "CLICK",
-                            color = if (state.metronomeEnabled) CowColors.AccentCyan else CowColors.TextSecondary,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            // Beat / Step LED Progress Strip
-            val ts = state.activePreset.timeSignature
-            val beats = ts.beatsPerBar
-            val currentBeat = if (state.currentStep >= 0) {
-                (state.currentStep / ts.stepsPerBeat.coerceAtLeast(1)) % beats
-            } else -1
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                for (b in 0 until beats) {
-                    val active = b == currentBeat && state.isPlaying
-                    val color = when {
-                        active && state.fillActive -> CowColors.AccentPink
-                        active && b == 0 -> CowColors.AccentAmber
-                        active -> CowColors.AccentCyan
-                        else -> CowColors.SurfaceElevated
-                    }
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(5.dp)
-                            .clip(CircleShape)
-                            .background(color)
+                    Text(
+                        text = if (state.isLoadingSound) "..." else sfLabel,
+                        color = CowColors.TextPrimary,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
+
+                // Mixer icon
+                IconButton(onClick = onToggleMixer, modifier = Modifier.size(38.dp)) {
+                    Icon(
+                        imageVector = Icons.Default.Tune,
+                        contentDescription = "Mixer",
+                        tint = if (mixerOpen) CowColors.AccentOrange else CowColors.TextPrimary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+
+                // Overflow Menu (Export WAV, Export MIDI, Load SF2)
+                Box {
+                    IconButton(onClick = { showOverflowMenu = true }, modifier = Modifier.size(36.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = "More",
+                            tint = CowColors.TextPrimary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = showOverflowMenu,
+                        onDismissRequest = { showOverflowMenu = false },
+                        containerColor = CowColors.SurfaceElevated
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Load SoundFont (.sf2)", color = CowColors.TextPrimary) },
+                            onClick = {
+                                showOverflowMenu = false
+                                onImportSf2()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Choose Drum Kit / SF2", color = CowColors.TextPrimary) },
+                            onClick = {
+                                showOverflowMenu = false
+                                onOpenKitPicker()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Export WAV Audio", color = CowColors.TextPrimary) },
+                            onClick = {
+                                showOverflowMenu = false
+                                onExportWav()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Export MIDI (.mid)", color = CowColors.TextPrimary) },
+                            onClick = {
+                                showOverflowMenu = false
+                                onExportMidi()
+                            }
+                        )
+                    }
+                }
             }
+
+            HorizontalDivider(color = CowColors.BorderSubtle, thickness = 1.dp)
         }
+    }
+
+    if (showBpmDialog) {
+        AlertDialog(
+            onDismissRequest = { showBpmDialog = false },
+            containerColor = CowColors.SurfacePanel,
+            title = {
+                Text(
+                    text = "Tempo & Swing",
+                    color = CowColors.TextPrimary,
+                    fontWeight = FontWeight.SemiBold
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = { onBpmChange(state.bpm - 1) }) {
+                            Icon(Icons.Default.Remove, contentDescription = "-1", tint = CowColors.TextPrimary)
+                        }
+                        Text(
+                            text = "${state.bpm} BPM",
+                            color = CowColors.AccentOrange,
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        )
+                        IconButton(onClick = { onBpmChange(state.bpm + 1) }) {
+                            Icon(Icons.Default.Add, contentDescription = "+1", tint = CowColors.TextPrimary)
+                        }
+                    }
+
+                    Slider(
+                        value = state.bpm.toFloat(),
+                        onValueChange = { onBpmChange(it.toInt()) },
+                        valueRange = 40f..240f,
+                        colors = SliderDefaults.colors(
+                            thumbColor = CowColors.AccentOrange,
+                            activeTrackColor = CowColors.AccentOrange,
+                            inactiveTrackColor = CowColors.BorderSubtle
+                        )
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Swing: ${(state.swing * 100).toInt()}%", color = CowColors.TextSecondary, fontSize = 13.sp)
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(CowColors.AccentOrange)
+                                .clickable { onTapTempo() }
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                        ) {
+                            Text("TAP TEMPO", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+                    }
+
+                    Slider(
+                        value = state.swing,
+                        onValueChange = onSwingChange,
+                        valueRange = 0f..0.70f,
+                        colors = SliderDefaults.colors(
+                            thumbColor = CowColors.AccentOrange,
+                            activeTrackColor = CowColors.AccentOrange,
+                            inactiveTrackColor = CowColors.BorderSubtle
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showBpmDialog = false }) {
+                    Text("DONE", color = CowColors.AccentOrange, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
     }
 }

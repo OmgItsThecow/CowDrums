@@ -130,14 +130,14 @@ private fun MixerChannelCard(
     onToggleMute: () -> Unit,
     onToggleSolo: () -> Unit
 ) {
-    val accent = Color(instrument.colorHex)
+    val accent = CowColors.AccentOrange
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(CowColors.SurfaceCard)
-            .border(1.dp, CowColors.BorderSubtle, RoundedCornerShape(12.dp))
+            .border(1.dp, CowColors.BorderSubtle, RoundedCornerShape(8.dp))
             .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
         Row(

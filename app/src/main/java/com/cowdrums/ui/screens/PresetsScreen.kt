@@ -18,20 +18,20 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -52,6 +52,11 @@ import com.cowdrums.model.PatternSlot
 import com.cowdrums.ui.theme.CowColors
 import com.cowdrums.viewmodel.DrumMachineUiState
 
+/**
+ * Clean, minimal SF Drum Machine style preset list:
+ * Flat charcoal rows with hairline dividers, vivid orange circular play badges,
+ * genre filter strip, and bottom MAIN A / VAR B / FILL performance bar.
+ */
 @Composable
 fun PresetsScreen(
     state: DrumMachineUiState,
@@ -82,51 +87,51 @@ fun PresetsScreen(
             .fillMaxSize()
             .background(CowColors.BgDark)
     ) {
-        // Search Bar
+        // Minimal Search Box
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
             placeholder = {
                 Text(
-                    "Search ${state.allPresets.size} ready-to-play patterns...",
+                    "Search ${state.allPresets.size} drum patterns...",
                     color = CowColors.TextMuted,
                     fontSize = 13.sp
                 )
             },
             leadingIcon = {
-                Icon(Icons.Default.Search, contentDescription = null, tint = CowColors.TextMuted)
+                Icon(Icons.Default.Search, contentDescription = null, tint = CowColors.TextMuted, modifier = Modifier.size(18.dp))
             },
             trailingIcon = {
                 if (searchQuery.isNotEmpty()) {
                     IconButton(onClick = { searchQuery = "" }) {
-                        Icon(Icons.Default.Close, contentDescription = "Clear", tint = CowColors.TextSecondary)
+                        Icon(Icons.Default.Close, contentDescription = "Clear", tint = CowColors.TextSecondary, modifier = Modifier.size(18.dp))
                     }
                 }
             },
             singleLine = true,
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(8.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedContainerColor = CowColors.SurfaceCard,
                 unfocusedContainerColor = CowColors.SurfaceCard,
-                focusedBorderColor = CowColors.AccentAmber,
+                focusedBorderColor = CowColors.AccentOrange,
                 unfocusedBorderColor = CowColors.BorderSubtle,
                 focusedTextColor = CowColors.TextPrimary,
                 unfocusedTextColor = CowColors.TextPrimary
             ),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .padding(horizontal = 10.dp, vertical = 6.dp)
         )
 
-        // Genre Filter Chips
+        // Genre Filter Chips (Monochrome + Single Orange Active)
         LazyRow(
-            contentPadding = PaddingValues(horizontal = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(horizontal = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
             item {
                 GenreChip(
-                    label = "All (${state.allPresets.size})",
+                    label = "All",
                     selected = selectedGenre == null,
                     onClick = { selectedGenre = null }
                 )
@@ -135,7 +140,7 @@ fun PresetsScreen(
                 val count = state.allPresets.count { it.genre == genre }
                 if (count > 0) {
                     GenreChip(
-                        label = "${genre.label} ($count)",
+                        label = genre.label,
                         selected = selectedGenre == genre,
                         onClick = { selectedGenre = if (selectedGenre == genre) null else genre }
                     )
@@ -143,101 +148,130 @@ fun PresetsScreen(
             }
         }
 
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(6.dp))
+        HorizontalDivider(color = CowColors.BorderSubtle, thickness = 1.dp)
 
-        // Preset List
+        // Flat SF Drum Machine style list rows
         LazyColumn(
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.weight(1f)
         ) {
             items(filtered, key = { it.id }) { preset ->
                 val isCurrent = state.activePreset.id == preset.id && !state.songMode
-                PresetCard(
-                    preset = preset,
-                    isCurrent = isCurrent,
-                    isPlaying = isCurrent && state.isPlaying,
-                    onTapPlay = {
-                        if (isCurrent) {
-                            onTogglePlay()
-                        } else {
-                            onSelectPreset(preset, true)
-                        }
-                    },
-                    onAddToSong = { onAddToSong(preset) },
-                    onDelete = if (preset.isCustom) ({ onDeleteCustomPreset(preset) }) else null
-                )
-            }
-        }
+                val isPlaying = isCurrent && state.isPlaying
 
-        // Bottom Live Groove Performance Bar (MAIN A / VAR B / FILL / AUTO-FILL)
-        Surface(
-            color = CowColors.SurfacePanel,
-            tonalElevation = 6.dp,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                SlotButton(
-                    label = "MAIN A",
-                    selected = state.playingSlot == PatternSlot.MAIN_A && !state.fillActive,
-                    accent = CowColors.AccentAmber,
-                    modifier = Modifier.weight(1f),
-                    onClick = { onSelectSlot(PatternSlot.MAIN_A) }
-                )
-                SlotButton(
-                    label = "VAR B",
-                    selected = state.playingSlot == PatternSlot.VAR_B && !state.fillActive,
-                    accent = CowColors.AccentCyan,
-                    modifier = Modifier.weight(1f),
-                    onClick = { onSelectSlot(PatternSlot.VAR_B) }
-                )
-                SlotButton(
-                    label = if (state.fillActive) "FILLING!" else "FILL",
-                    selected = state.fillActive,
-                    accent = CowColors.AccentPink,
-                    modifier = Modifier.weight(1f),
-                    onClick = onTriggerFill
-                )
-                Box(
-                    contentAlignment = Alignment.Center,
+                Row(
                     modifier = Modifier
-                        .height(38.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(
-                            if (state.autoFillEvery4Bars) CowColors.AccentViolet.copy(alpha = 0.28f)
-                            else CowColors.SurfaceCard
-                        )
-                        .border(
-                            1.dp,
-                            if (state.autoFillEvery4Bars) CowColors.AccentViolet else CowColors.BorderSubtle,
-                            RoundedCornerShape(10.dp)
-                        )
-                        .clickable { onToggleAutoFill() }
-                        .padding(horizontal = 10.dp)
+                        .fillMaxWidth()
+                        .background(if (isCurrent) CowColors.SurfaceCard else CowColors.BgDark)
+                        .clickable {
+                            if (isCurrent) onTogglePlay() else onSelectPreset(preset, true)
+                        }
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Circular Orange Badge (matches Screenshot 1's orange circle!)
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(if (isCurrent) CowColors.AccentOrange else CowColors.SurfaceCard)
+                            .border(
+                                width = 1.dp,
+                                color = if (isCurrent) CowColors.AccentOrange else CowColors.BorderSubtle,
+                                shape = CircleShape
+                            )
+                    ) {
                         Icon(
-                            Icons.Default.Bolt,
-                            contentDescription = "Auto-Fill",
-                            tint = if (state.autoFillEvery4Bars) CowColors.AccentViolet else CowColors.TextMuted,
-                            modifier = Modifier.size(14.dp)
+                            imageVector = if (isPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
+                            contentDescription = if (isPlaying) "Stop" else "Play",
+                            tint = if (isCurrent) Color.White else CowColors.AccentOrange,
+                            modifier = Modifier.size(22.dp)
                         )
-                        Spacer(Modifier.width(2.dp))
+                    }
+
+                    Spacer(Modifier.width(14.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "4B",
-                            color = if (state.autoFillEvery4Bars) CowColors.AccentViolet else CowColors.TextSecondary,
+                            text = preset.name,
+                            color = if (isCurrent) CowColors.AccentOrange else CowColors.TextPrimary,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 15.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "${preset.genre.label}  ·  ${preset.bpm} BPM  ·  ${preset.timeSignature.label}  ·  ${preset.recommendedKit.displayName}",
+                            color = CowColors.TextSecondary,
                             fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    if (preset.isCustom) {
+                        IconButton(onClick = { onDeleteCustomPreset(preset) }, modifier = Modifier.size(34.dp)) {
+                            Icon(
+                                Icons.Default.DeleteOutline,
+                                contentDescription = "Delete",
+                                tint = CowColors.TextMuted,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+
+                    IconButton(onClick = { onAddToSong(preset) }, modifier = Modifier.size(34.dp)) {
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = "Add to Song",
+                            tint = CowColors.TextSecondary,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
+                HorizontalDivider(color = CowColors.BorderSubtle, thickness = 1.dp)
             }
+        }
+
+        // Clean bottom A / B / FILL / AUTO-4B performance bar
+        HorizontalDivider(color = CowColors.BorderSubtle, thickness = 1.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(CowColors.SurfaceCard)
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SlotButton(
+                label = "MAIN A",
+                selected = state.playingSlot == PatternSlot.MAIN_A && !state.fillActive,
+                accent = CowColors.AccentOrange,
+                modifier = Modifier.weight(1f),
+                onClick = { onSelectSlot(PatternSlot.MAIN_A) }
+            )
+            SlotButton(
+                label = "VAR B",
+                selected = state.playingSlot == PatternSlot.VAR_B && !state.fillActive,
+                accent = CowColors.AccentOrange,
+                modifier = Modifier.weight(1f),
+                onClick = { onSelectSlot(PatternSlot.VAR_B) }
+            )
+            SlotButton(
+                label = if (state.fillActive) "FILLING" else "FILL",
+                selected = state.fillActive,
+                accent = CowColors.AccentOrange,
+                modifier = Modifier.weight(1f),
+                onClick = onTriggerFill
+            )
+            SlotButton(
+                label = "AUTO 4B",
+                selected = state.autoFillEvery4Bars,
+                accent = CowColors.AccentOrange,
+                modifier = Modifier.width(74.dp),
+                onClick = onToggleAutoFill
+            )
         }
     }
 }
@@ -247,144 +281,21 @@ private fun GenreChip(label: String, selected: Boolean, onClick: () -> Unit) {
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(if (selected) CowColors.AccentAmber else CowColors.SurfaceCard)
+            .clip(RoundedCornerShape(6.dp))
+            .background(if (selected) CowColors.AccentOrange else CowColors.SurfaceCard)
             .border(
                 1.dp,
-                if (selected) CowColors.AccentAmber else CowColors.BorderSubtle,
-                RoundedCornerShape(20.dp)
+                if (selected) CowColors.AccentOrange else CowColors.BorderSubtle,
+                RoundedCornerShape(6.dp)
             )
             .clickable { onClick() }
-            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .padding(horizontal = 11.dp, vertical = 6.dp)
     ) {
         Text(
             text = label,
-            color = if (selected) Color(0xFF111318) else CowColors.TextSecondary,
+            color = if (selected) Color.White else CowColors.TextSecondary,
             fontSize = 12.sp,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
-        )
-    }
-}
-
-@Composable
-private fun PresetCard(
-    preset: DrumPreset,
-    isCurrent: Boolean,
-    isPlaying: Boolean,
-    onTapPlay: () -> Unit,
-    onAddToSong: () -> Unit,
-    onDelete: (() -> Unit)?
-) {
-    val borderColor = if (isCurrent) CowColors.AccentAmber else CowColors.BorderSubtle
-    val bgColor = if (isCurrent) CowColors.AccentAmber.copy(alpha = 0.10f) else CowColors.SurfaceCard
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(bgColor)
-            .border(1.dp, borderColor, RoundedCornerShape(14.dp))
-            .clickable { onTapPlay() }
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Play / Stop Circle Button
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .size(42.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(
-                    when {
-                        isPlaying -> CowColors.AccentCoral
-                        isCurrent -> CowColors.AccentAmber
-                        else -> CowColors.SurfaceElevated
-                    }
-                )
-        ) {
-            Icon(
-                imageVector = if (isPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
-                contentDescription = if (isPlaying) "Stop" else "Play",
-                tint = if (isPlaying || isCurrent) Color.White else CowColors.AccentAmber,
-                modifier = Modifier.size(24.dp)
-            )
-        }
-
-        Spacer(Modifier.width(12.dp))
-
-        Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = preset.name,
-                    color = if (isCurrent) CowColors.AccentAmber else CowColors.TextPrimary,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false)
-                )
-                Spacer(Modifier.width(6.dp))
-                TagPill(preset.genre.label, CowColors.AccentCyan)
-            }
-
-            if (preset.description.isNotBlank()) {
-                Text(
-                    text = preset.description,
-                    color = CowColors.TextSecondary,
-                    fontSize = 11.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            Spacer(Modifier.height(4.dp))
-
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                TagPill("${preset.bpm} BPM", CowColors.TextSecondary)
-                TagPill(preset.timeSignature.label, CowColors.TextSecondary)
-                if (preset.swing > 0.01f) {
-                    TagPill("Swing ${(preset.swing * 100).toInt()}%", CowColors.AccentViolet)
-                }
-                TagPill(preset.recommendedKit.displayName, CowColors.TextMuted)
-            }
-        }
-
-        if (onDelete != null) {
-            IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
-                Icon(
-                    Icons.Default.Delete,
-                    contentDescription = "Delete preset",
-                    tint = CowColors.TextMuted,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-        }
-
-        IconButton(onClick = onAddToSong, modifier = Modifier.size(32.dp)) {
-            Icon(
-                Icons.Default.Add,
-                contentDescription = "Add to Song",
-                tint = CowColors.TextSecondary,
-                modifier = Modifier.size(18.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun TagPill(text: String, color: Color) {
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(CowColors.SurfacePanel)
-            .padding(horizontal = 6.dp, vertical = 2.dp)
-    ) {
-        Text(
-            text = text,
-            color = color,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
         )
     }
 }
@@ -400,16 +311,16 @@ fun SlotButton(
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
-            .height(38.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(if (selected) accent else CowColors.SurfaceCard)
-            .border(1.dp, if (selected) accent else CowColors.BorderSubtle, RoundedCornerShape(10.dp))
+            .height(36.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(if (selected) accent else CowColors.BgDark)
+            .border(1.dp, if (selected) accent else CowColors.BorderSubtle, RoundedCornerShape(6.dp))
             .clickable { onClick() }
     ) {
         Text(
             text = label,
-            color = if (selected) Color(0xFF0D0F14) else CowColors.TextPrimary,
-            fontWeight = FontWeight.ExtraBold,
+            color = if (selected) Color.White else CowColors.TextSecondary,
+            fontWeight = FontWeight.SemiBold,
             fontSize = 12.sp
         )
     }

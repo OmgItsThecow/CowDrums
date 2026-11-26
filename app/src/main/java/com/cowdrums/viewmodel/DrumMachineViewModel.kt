@@ -343,6 +343,13 @@ class DrumMachineViewModel(application: Application) : AndroidViewModel(applicat
 
     // ==================== KIT & SOUNDFONT ====================
 
+    fun stepBuiltInKit(delta: Int) {
+        val kits = BuiltInKit.entries
+        val curIdx = (uiState.value.soundSource as? SoundSource.BuiltIn)?.kit?.ordinal ?: 0
+        val nextIdx = (curIdx + delta + kits.size) % kits.size
+        selectBuiltInKit(kits[nextIdx])
+    }
+
     fun selectBuiltInKit(kit: BuiltInKit) {
         val cached = kitCache[kit]
         if (cached != null) {

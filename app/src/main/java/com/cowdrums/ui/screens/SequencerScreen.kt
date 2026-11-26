@@ -19,7 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -48,6 +48,9 @@ import com.cowdrums.model.TimeSignature
 import com.cowdrums.ui.theme.CowColors
 import com.cowdrums.viewmodel.DrumMachineUiState
 
+/**
+ * Minimalist charcoal + orange step sequencer grid matching SF Drum Machine.
+ */
 @Composable
 fun SequencerScreen(
     state: DrumMachineUiState,
@@ -57,9 +60,7 @@ fun SequencerScreen(
     onClearSlot: () -> Unit,
     onToggleBarLength: () -> Unit,
     onSetTimeSignature: (TimeSignature) -> Unit,
-    onSaveCustomPreset: (String) -> Unit,
-    onExportWav: () -> Unit,
-    onExportMidi: () -> Unit
+    onSaveCustomPreset: (String) -> Unit
 ) {
     var showTimeSigMenu by remember { mutableStateOf(false) }
     var showSaveDialog by remember { mutableStateOf(false) }
@@ -75,33 +76,33 @@ fun SequencerScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(CowColors.BgDark)
-            .padding(horizontal = 10.dp, vertical = 8.dp)
+            .padding(horizontal = 8.dp, vertical = 6.dp)
     ) {
-        // Top Toolbar: Slot Selector + TimeSig + Bars + Clear + Save
+        // Compact Toolbar
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(CowColors.SurfaceCard)
+                .border(1.dp, CowColors.BorderSubtle, RoundedCornerShape(8.dp))
+                .padding(horizontal = 8.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            SlotPill("A", state.selectedSlot == PatternSlot.MAIN_A, CowColors.AccentAmber) {
-                onSelectSlot(PatternSlot.MAIN_A)
-            }
-            SlotPill("B", state.selectedSlot == PatternSlot.VAR_B, CowColors.AccentCyan) {
-                onSelectSlot(PatternSlot.VAR_B)
-            }
-            SlotPill("FILL", state.selectedSlot == PatternSlot.FILL, CowColors.AccentPink) {
-                onSelectSlot(PatternSlot.FILL)
-            }
+            SeqPill("A", state.selectedSlot == PatternSlot.MAIN_A) { onSelectSlot(PatternSlot.MAIN_A) }
+            SeqPill("B", state.selectedSlot == PatternSlot.VAR_B) { onSelectSlot(PatternSlot.VAR_B) }
+            SeqPill("FILL", state.selectedSlot == PatternSlot.FILL) { onSelectSlot(PatternSlot.FILL) }
 
             Box {
-                SmallActionChip(label = ts.label, onClick = { showTimeSigMenu = true })
+                SeqPill(ts.label, false) { showTimeSigMenu = true }
                 DropdownMenu(
                     expanded = showTimeSigMenu,
-                    onDismissRequest = { showTimeSigMenu = false }
+                    onDismissRequest = { showTimeSigMenu = false },
+                    containerColor = CowColors.SurfaceElevated
                 ) {
                     TimeSignature.entries.forEach { sig ->
                         DropdownMenuItem(
-                            text = { Text("${sig.label} (${sig.stepsPerBar} steps)") },
+                            text = { Text("${sig.label} (${sig.stepsPerBar} steps)", color = CowColors.TextPrimary) },
                             onClick = {
                                 showTimeSigMenu = false
                                 onSetTimeSignature(sig)
@@ -111,92 +112,52 @@ fun SequencerScreen(
                 }
             }
 
-            SmallActionChip(
-                label = "${bars}B (${pattern.stepCount})",
-                onClick = onToggleBarLength
-            )
+            SeqPill("${bars}B", false, onToggleBarLength)
 
             Spacer(Modifier.weight(1f))
 
-            // Clear slot
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .size(32.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(CowColors.SurfaceCard)
-                    .border(1.dp, CowColors.BorderSubtle, RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(6.dp))
                     .clickable { onClearSlot() }
             ) {
-                Icon(
-                    Icons.Default.DeleteSweep,
-                    contentDescription = "Clear pattern",
-                    tint = CowColors.TextSecondary,
-                    modifier = Modifier.size(16.dp)
-                )
+                Icon(Icons.Default.DeleteOutline, contentDescription = "Clear", tint = CowColors.TextSecondary, modifier = Modifier.size(19.dp))
             }
 
-            // Save Preset
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .size(32.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(CowColors.AccentAmber.copy(alpha = 0.2f))
-                    .border(1.dp, CowColors.AccentAmber, RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(6.dp))
                     .clickable {
                         saveName = "${state.activePreset.name} Custom"
                         showSaveDialog = true
                     }
             ) {
-                Icon(
-                    Icons.Default.Save,
-                    contentDescription = "Save Preset",
-                    tint = CowColors.AccentAmber,
-                    modifier = Modifier.size(16.dp)
-                )
+                Icon(Icons.Default.Save, contentDescription = "Save Preset", tint = CowColors.AccentOrange, modifier = Modifier.size(19.dp))
             }
         }
 
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(8.dp))
 
-        // Legend + WAV/MIDI Export buttons
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Tap cell: Med -> Accent -> Ghost -> Off",
-                color = CowColors.TextMuted,
-                fontSize = 10.sp
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                SmallActionChip(label = "WAV", onClick = onExportWav)
-                SmallActionChip(label = "MIDI", onClick = onExportMidi)
-            }
-        }
-
-        Spacer(Modifier.height(6.dp))
-
-        // Step Numbers Header + Scrollable 12-row Grid
+        // Step Numbers Header
         Row(modifier = Modifier.fillMaxWidth()) {
-            // Fixed Left Instrument Label Column Header
             Box(
                 contentAlignment = Alignment.CenterStart,
                 modifier = Modifier
-                    .width(56.dp)
+                    .width(52.dp)
                     .height(22.dp)
             ) {
-                Text("DRUM", color = CowColors.TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Text("KIT", color = CowColors.TextMuted, fontSize = 10.sp, fontWeight = FontWeight.Medium)
             }
 
-            // Scrollable Step Numbers
             Row(
                 modifier = Modifier
                     .weight(1f)
                     .horizontalScroll(hScroll),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(3.dp)
             ) {
                 for (step in 0 until pattern.stepCount) {
                     val isBeatStart = step % ts.stepsPerBeat == 0
@@ -206,10 +167,10 @@ fun SequencerScreen(
                         modifier = Modifier
                             .width(34.dp)
                             .height(22.dp)
-                            .clip(RoundedCornerShape(5.dp))
+                            .clip(RoundedCornerShape(4.dp))
                             .background(
                                 when {
-                                    isPlayhead -> CowColors.AccentAmber
+                                    isPlayhead -> CowColors.AccentOrange
                                     isBeatStart -> CowColors.SurfaceElevated
                                     else -> Color.Transparent
                                 }
@@ -218,12 +179,12 @@ fun SequencerScreen(
                         Text(
                             text = "${step + 1}",
                             color = when {
-                                isPlayhead -> Color(0xFF0D0F14)
+                                isPlayhead -> Color.White
                                 isBeatStart -> CowColors.TextPrimary
                                 else -> CowColors.TextMuted
                             },
                             fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
+                            fontWeight = FontWeight.SemiBold,
                             textAlign = TextAlign.Center
                         )
                     }
@@ -233,47 +194,44 @@ fun SequencerScreen(
 
         Spacer(Modifier.height(4.dp))
 
-        // 12 Instrument Rows
+        // 12 Instrument Rows (Clean Monochrome + Orange Velocity Cells)
         Column(
             modifier = Modifier
                 .weight(1f)
                 .verticalScroll(vScroll),
-            verticalArrangement = Arrangement.spacedBy(5.dp)
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             DrumInstrument.ALL.forEach { inst ->
-                val instColor = Color(inst.colorHex)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Instrument Audition Button
                     Box(
                         contentAlignment = Alignment.CenterStart,
                         modifier = Modifier
-                            .width(56.dp)
+                            .width(52.dp)
                             .height(36.dp)
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(6.dp))
                             .background(CowColors.SurfaceCard)
-                            .border(1.dp, instColor.copy(alpha = 0.45f), RoundedCornerShape(8.dp))
+                            .border(1.dp, CowColors.BorderSubtle, RoundedCornerShape(6.dp))
                             .clickable { onAuditionInstrument(inst) }
                             .padding(horizontal = 6.dp)
                     ) {
                         Text(
                             text = inst.shortName,
-                            color = instColor,
+                            color = CowColors.TextPrimary,
                             fontSize = 11.sp,
-                            fontWeight = FontWeight.ExtraBold
+                            fontWeight = FontWeight.Medium
                         )
                     }
 
                     Spacer(Modifier.width(4.dp))
 
-                    // Synchronized Horizontal Step Cells
                     Row(
                         modifier = Modifier
                             .weight(1f)
                             .horizontalScroll(hScroll),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
                     ) {
                         for (step in 0 until pattern.stepCount) {
                             val vel = pattern.velocityAt(inst, step)
@@ -281,16 +239,10 @@ fun SequencerScreen(
                             val isPlayhead = state.isPlaying && state.currentStep == step
 
                             val cellBg = when (vel) {
-                                StepVelocity.ACCENT -> instColor
-                                StepVelocity.MEDIUM -> instColor.copy(alpha = 0.62f)
-                                StepVelocity.SOFT -> instColor.copy(alpha = 0.28f)
-                                else -> if (isBeatGroupOdd) CowColors.SurfacePanel else CowColors.SurfaceCard
-                            }
-
-                            val borderColor = when {
-                                isPlayhead -> Color.White
-                                vel > 0 -> instColor
-                                else -> CowColors.BorderSubtle.copy(alpha = 0.6f)
+                                StepVelocity.ACCENT -> CowColors.AccentOrange
+                                StepVelocity.MEDIUM -> CowColors.AccentOrange.copy(alpha = 0.65f)
+                                StepVelocity.SOFT -> CowColors.AccentOrange.copy(alpha = 0.30f)
+                                else -> if (isBeatGroupOdd) CowColors.SurfaceElevated.copy(alpha = 0.55f) else CowColors.SurfaceCard
                             }
 
                             Box(
@@ -298,26 +250,19 @@ fun SequencerScreen(
                                 modifier = Modifier
                                     .width(34.dp)
                                     .height(36.dp)
-                                    .clip(RoundedCornerShape(7.dp))
+                                    .clip(RoundedCornerShape(5.dp))
                                     .background(cellBg)
                                     .border(
                                         width = if (isPlayhead) 1.5.dp else 1.dp,
-                                        color = borderColor,
-                                        shape = RoundedCornerShape(7.dp)
+                                        color = if (isPlayhead) Color.White else CowColors.BorderSubtle,
+                                        shape = RoundedCornerShape(5.dp)
                                     )
                                     .clickable { onCycleStep(inst, step) }
                             ) {
-                                if (vel > 0) {
-                                    Text(
-                                        text = when (vel) {
-                                            StepVelocity.ACCENT -> "●"
-                                            StepVelocity.MEDIUM -> "◐"
-                                            else -> "○"
-                                        },
-                                        color = Color.White,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
+                                if (vel == StepVelocity.ACCENT) {
+                                    Text("●", color = Color.White, fontSize = 9.sp)
+                                } else if (vel == StepVelocity.SOFT) {
+                                    Text("○", color = Color.White.copy(alpha = 0.85f), fontSize = 9.sp)
                                 }
                             }
                         }
@@ -347,7 +292,7 @@ fun SequencerScreen(
                         showSaveDialog = false
                     }
                 ) {
-                    Text("SAVE", color = CowColors.AccentAmber, fontWeight = FontWeight.Bold)
+                    Text("SAVE", color = CowColors.AccentOrange, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -360,43 +305,22 @@ fun SequencerScreen(
 }
 
 @Composable
-private fun SlotPill(label: String, selected: Boolean, accent: Color, onClick: () -> Unit) {
+private fun SeqPill(label: String, selected: Boolean, onClick: () -> Unit) {
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
-            .height(32.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(if (selected) accent else CowColors.SurfaceCard)
-            .border(1.dp, if (selected) accent else CowColors.BorderSubtle, RoundedCornerShape(8.dp))
+            .height(30.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(if (selected) CowColors.AccentOrange else CowColors.BgDark)
+            .border(1.dp, if (selected) CowColors.AccentOrange else CowColors.BorderSubtle, RoundedCornerShape(6.dp))
             .clickable { onClick() }
-            .padding(horizontal = 10.dp)
+            .padding(horizontal = 9.dp)
     ) {
         Text(
             text = label,
-            color = if (selected) Color(0xFF0D0F14) else CowColors.TextPrimary,
+            color = if (selected) Color.White else CowColors.TextSecondary,
             fontSize = 11.sp,
-            fontWeight = FontWeight.ExtraBold
-        )
-    }
-}
-
-@Composable
-private fun SmallActionChip(label: String, onClick: () -> Unit) {
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier = Modifier
-            .height(32.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(CowColors.SurfaceCard)
-            .border(1.dp, CowColors.BorderSubtle, RoundedCornerShape(8.dp))
-            .clickable { onClick() }
-            .padding(horizontal = 8.dp)
-    ) {
-        Text(
-            text = label,
-            color = CowColors.TextPrimary,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.SemiBold
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
         )
     }
 }

@@ -1,7 +1,7 @@
 <resources>
     <style name="Theme.CowDrums" parent="android:Theme.Material.NoActionBar">
-        <item name="android:statusBarColor">#FF0D0F14</item>
-        <item name="android:navigationBarColor">#FF0D0F14</item>
-        <item name="android:windowBackground">#FF0D0F14</item>
+        <item name="android:statusBarColor">#FF212529</item>
+        <item name="android:navigationBarColor">#FF212529</item>
+        <item name="android:windowBackground">#FF212529</item>
     </style>
 </resources>
