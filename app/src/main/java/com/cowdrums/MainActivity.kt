@@ -30,6 +30,7 @@ import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.Piano
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -50,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.cowdrums.ui.components.KitSoundFontSheet
 import com.cowdrums.ui.components.TransportBar
+import com.cowdrums.ui.screens.BassScreen
 import com.cowdrums.ui.screens.MixerScreen
 import com.cowdrums.ui.screens.PerformScreen
 import com.cowdrums.ui.screens.PresetsScreen
@@ -78,6 +80,7 @@ private enum class CowMode(val title: String, val icon: ImageVector) {
     PRESETS("Presets", Icons.Default.LibraryMusic),
     PADS("Pads", Icons.Default.Apps),
     SEQUENCER("Sequencer", Icons.Default.GridOn),
+    BASS("Bass", Icons.Default.Piano),
     SONG("Song", Icons.AutoMirrored.Filled.QueueMusic)
 }
 
@@ -234,6 +237,17 @@ fun CowDrumsApp(vm: DrumMachineViewModel = viewModel()) {
                         onToggleBarLength = vm::toggleBarLength,
                         onSetTimeSignature = vm::setTimeSignature,
                         onSaveCustomPreset = vm::saveCurrentAsCustomPreset
+                    )
+                    CowMode.BASS -> BassScreen(
+                        state = state,
+                        onTriggerBassNote = vm::triggerBassNote,
+                        onSelectBassPreset = vm::selectBassPreset,
+                        onStepBassPreset = vm::stepBassPreset,
+                        onStepBassOctave = vm::stepBassOctave,
+                        onBassVolumeChange = vm::setBassVolume,
+                        onClearBass = vm::clearBassPattern,
+                        onToggleMetronome = vm::toggleMetronome,
+                        onToggleLiveRecord = vm::toggleLiveRecord
                     )
                     CowMode.SONG -> SongScreen(
                         state = state,

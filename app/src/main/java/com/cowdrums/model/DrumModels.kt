@@ -172,6 +172,22 @@ enum class BuiltInKit(
     LOFI("Lo-Fi Warm", "Vintage tape-filtered acoustic kit (SF2)", 0, applyLoFiFilter = true)
 }
 
+@Serializable
+enum class BassPreset(
+    val gmProgram: Int,
+    val displayName: String,
+    val bank: Int = 0
+) {
+    ACOUSTIC_BASS(32, "ACOUSTIC BASS"),
+    FINGERED_BASS(33, "FINGERED BASS"),
+    PICKED_BASS(34, "PICKED BASS"),
+    FRETLESS_BASS(35, "FRETLESS BASS"),
+    SLAP_BASS_1(36, "SLAP BASS 1"),
+    SLAP_BASS_2(37, "SLAP BASS 2"),
+    SYNTH_BASS_1(38, "SYNTH BASS 1"),
+    SYNTH_BASS_2(39, "SYNTH BASS 2")
+}
+
 data class SoundFontPresetInfo(
     val bank: Int,
     val preset: Int,
@@ -234,7 +250,8 @@ object StepVelocity {
 @Serializable
 data class StepPattern(
     val stepCount: Int = 16,
-    val rows: Map<String, List<Int>> = emptyMap()
+    val rows: Map<String, List<Int>> = emptyMap(),
+    val bassNotes: Map<Int, Int> = emptyMap() // step -> MIDI note (e.g. 24..59)
 ) {
     fun velocityAt(instrument: DrumInstrument, step: Int): Int {
         val row = rows[instrument.name] ?: return 0
@@ -252,6 +269,14 @@ data class StepPattern(
         return copy(rows = nextRows)
     }
 
+    fun withBassNote(step: Int, midiNote: Int?): StepPattern {
+        val next = bassNotes.toMutableMap()
+        if (midiNote == null) next.remove(step) else next[step] = midiNote
+        return copy(bassNotes = next)
+    }
+
+    fun clearBass(): StepPattern = copy(bassNotes = emptyMap())
+
     fun resized(newStepCount: Int): StepPattern {
         if (newStepCount == stepCount) return this
         val nextRows = rows.mapValues { (_, list) ->
@@ -259,7 +284,12 @@ data class StepPattern(
                 if (list.isEmpty()) 0 else list[i % list.size]
             }
         }
-        return StepPattern(stepCount = newStepCount, rows = nextRows)
+        val nextBass = LinkedHashMap<Int, Int>()
+        for (i in 0 until newStepCount) {
+            val src = bassNotes[i % stepCount]
+            if (src != null) nextBass[i] = src
+        }
+        return StepPattern(stepCount = newStepCount, rows = nextRows, bassNotes = nextBass)
     }
 
     companion object {

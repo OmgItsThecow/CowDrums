@@ -231,6 +231,105 @@ object SoundFont2Parser {
         return result
     }
 
+    /**
+     * Renders pitched melodic bass notes (e.g. MIDI 24..59, C1..B3) from an SF2 melodic preset (Bank 0).
+     */
+    fun loadBassNotes(
+        bytes: ByteArray,
+        bank: Int = 0,
+        preset: Int = 32,
+        midiRange: IntRange = 24..59,
+        targetSampleRate: Int = BuiltInKitSynthesizer.SAMPLE_RATE
+    ): Map<Int, FloatArray> {
+        val parsed = parse(bytes) ?: return emptyMap()
+        val phdrIndex = parsed.phdrs.dropLast(1).indexOfFirst { it.bank == bank && it.preset == preset }
+        if (phdrIndex < 0) return emptyMap()
+
+        val keyToZones = HashMap<Int, MutableList<SampleZone>>()
+        val pStartBag = parsed.phdrs[phdrIndex].bagNdx
+        val pEndBag = parsed.phdrs[phdrIndex + 1].bagNdx
+
+        var gPresetKeyLo = 0
+        var gPresetKeyHi = 127
+        var gPresetVelLo = 0
+        var gPresetVelHi = 127
+        var gPresetCoarse = 0
+        var gPresetFine = 0
+        var gPresetAtten = 0
+
+        for (b in pStartBag until pEndBag) {
+            if (b + 1 >= parsed.pbags.size) break
+            val gStart = parsed.pbags[b].genNdx
+            val gEnd = parsed.pbags[b + 1].genNdx
+
+            var keyLo = gPresetKeyLo
+            var keyHi = gPresetKeyHi
+            var velLo = gPresetVelLo
+            var velHi = gPresetVelHi
+            var coarse = gPresetCoarse
+            var fine = gPresetFine
+            var atten = gPresetAtten
+            var instIdx = -1
+
+            for (g in gStart until gEnd) {
+                if (g >= parsed.pgens.size) break
+                val gen = parsed.pgens[g]
+                when (gen.oper) {
+                    GEN_KEY_RANGE -> {
+                        val u = gen.amount.toInt() and 0xFFFF
+                        keyLo = u and 0xFF
+                        keyHi = (u shr 8) and 0xFF
+                    }
+                    GEN_VEL_RANGE -> {
+                        val u = gen.amount.toInt() and 0xFFFF
+                        velLo = u and 0xFF
+                        velHi = (u shr 8) and 0xFF
+                    }
+                    GEN_COARSE_TUNE -> coarse += gen.amount.toInt()
+                    GEN_FINE_TUNE -> fine += gen.amount.toInt()
+                    GEN_INITIAL_ATTENUATION -> atten += gen.amount.toInt()
+                    GEN_INSTRUMENT -> instIdx = gen.amount.toInt() and 0xFFFF
+                }
+            }
+
+            if (instIdx < 0 && b == pStartBag) {
+                gPresetKeyLo = keyLo
+                gPresetKeyHi = keyHi
+                gPresetVelLo = velLo
+                gPresetVelHi = velHi
+                gPresetCoarse = coarse
+                gPresetFine = fine
+                gPresetAtten = atten
+                continue
+            }
+
+            if (REFERENCE_VELOCITY !in velLo..velHi) continue
+
+            if (instIdx in 0 until (parsed.insts.size - 1)) {
+                collectInstrumentZones(
+                    parsed = parsed,
+                    instIdx = instIdx,
+                    presetKeyLo = keyLo,
+                    presetKeyHi = keyHi,
+                    presetCoarse = coarse,
+                    presetFine = fine,
+                    presetAtten = atten,
+                    out = keyToZones
+                )
+            }
+        }
+
+        val out = HashMap<Int, FloatArray>()
+        for (midi in midiRange) {
+            val zones = keyToZones[midi] ?: continue
+            val rendered = renderLayeredNote(parsed, zones, midi, targetSampleRate, targetPeak = 0.85f)
+            if (rendered != null && rendered.isNotEmpty()) {
+                out[midi] = rendered
+            }
+        }
+        return out
+    }
+
     private fun targetPeakFor(inst: DrumInstrument): Float = when (inst) {
         DrumInstrument.KICK -> 0.96f
         DrumInstrument.SNARE -> 0.92f

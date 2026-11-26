@@ -109,12 +109,12 @@ class PresetLibraryAndSynthTest {
     }
 
     @Test
-    fun bundledGeneralUserSf2LoadsAllElevenRealKits() {
+    fun bundledGeneralUserSf2LoadsAllElevenRealKitsAndEightBasses() {
         val sf2File = File("src/main/assets/soundfonts/GeneralUser_GS_Drums.sf2")
         assertTrue("Bundled SF2 missing at ${sf2File.absolutePath}", sf2File.exists())
 
         val presets = SoundFont2Parser.listPresets(sf2File)
-        assertEquals("Expected 10 real studio drum kits in bundled SF2", 10, presets.size)
+        assertEquals("Expected 18 real studio presets (10 drums + 8 basses)", 18, presets.size)
 
         val bytes = sf2File.readBytes()
         for (kit in BuiltInKit.entries) {
@@ -136,6 +136,13 @@ class PresetLibraryAndSynthTest {
                 }
                 assertTrue("Silent sample in $kit/$inst", maxAbs > 0.2f)
             }
+        }
+
+        for (bp in com.cowdrums.model.BassPreset.entries) {
+            val notes = SoundFont2Parser.loadBassNotes(bytes = bytes, bank = bp.bank, preset = bp.gmProgram, midiRange = 36..47)
+            assertEquals("Bass $bp missing octave notes", 12, notes.size)
+            val c2 = notes[36]!!
+            assertTrue("Bass $bp C2 too short", c2.size > 2000)
         }
     }
 }

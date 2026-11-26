@@ -10,6 +10,7 @@ import com.cowdrums.audio.DrumAudioEngine
 import com.cowdrums.audio.SoundFont2Parser
 import com.cowdrums.data.CowDrumsRepository
 import com.cowdrums.data.PresetLibrary
+import com.cowdrums.model.BassPreset
 import com.cowdrums.model.BuiltInKit
 import com.cowdrums.model.ChannelMix
 import com.cowdrums.model.DrumGenre
@@ -46,9 +47,12 @@ data class DrumMachineUiState(
     val metronomeEnabled: Boolean = false,
     val liveRecordEnabled: Boolean = false,
     val lockKitOnPresetChange: Boolean = false,
-    val soundSource: SoundSource = SoundSource.BuiltIn(BuiltInKit.ACOUSTIC),
+    val soundSource: SoundSource = SoundSource.BuiltIn(BuiltInKit.ROOM),
     val loadedSoundFonts: List<LoadedSoundFont> = emptyList(),
     val isLoadingSound: Boolean = false,
+    val bassPreset: BassPreset = BassPreset.ACOUSTIC_BASS,
+    val bassOctave: Int = 1,
+    val bassVolume: Float = 0.80f,
     val mixer: Map<DrumInstrument, ChannelMix> = DrumInstrument.ALL.associateWith { ChannelMix() },
     val songMode: Boolean = false,
     val songSections: List<SongSection> = emptyList(),
@@ -60,6 +64,7 @@ class DrumMachineViewModel(application: Application) : AndroidViewModel(applicat
 
     private val repo = CowDrumsRepository(application.applicationContext)
     private val kitCache = HashMap<BuiltInKit, Map<DrumInstrument, FloatArray>>()
+    private val bassCache = HashMap<BassPreset, Map<Int, FloatArray>>()
 
     private val _uiState = MutableStateFlow(DrumMachineUiState())
     val uiState: StateFlow<DrumMachineUiState> = _uiState.asStateFlow()
@@ -80,7 +85,9 @@ class DrumMachineViewModel(application: Application) : AndroidViewModel(applicat
 
     init {
         val defaultKit = BuiltInKit.ROOM
+        val defaultBass = BassPreset.ACOUSTIC_BASS
         audioEngine.setMixerState(_uiState.value.mixer)
+        audioEngine.setBassVolume(_uiState.value.bassVolume)
         pushSequencerSnapshot(_uiState.value)
         audioEngine.startEngine()
 
@@ -88,6 +95,10 @@ class DrumMachineViewModel(application: Application) : AndroidViewModel(applicat
             val realSamples = loadBuiltInKitSamples(defaultKit)
             kitCache[defaultKit] = realSamples
             audioEngine.setKitSamples(realSamples)
+
+            val realBass = loadBassPresetSamples(defaultBass)
+            bassCache[defaultBass] = realBass
+            audioEngine.setBassSamples(realBass)
 
             val customPresets = repo.loadCustomPresets()
             val savedSong = repo.loadSongSections().ifEmpty { defaultDemoSong() }
@@ -117,6 +128,15 @@ class DrumMachineViewModel(application: Application) : AndroidViewModel(applicat
         } else {
             BuiltInKitSynthesizer.renderKit(kit)
         }
+    }
+
+    private fun loadBassPresetSamples(preset: BassPreset): Map<Int, FloatArray> {
+        val sf2Bytes = repo.loadBundledSf2Bytes() ?: return emptyMap()
+        return SoundFont2Parser.loadBassNotes(
+            bytes = sf2Bytes,
+            bank = preset.bank,
+            preset = preset.gmProgram
+        )
     }
 
     override fun onCleared() {
@@ -440,6 +460,65 @@ class DrumMachineViewModel(application: Application) : AndroidViewModel(applicat
                 }
             }
         }
+    }
+
+    // ==================== BASS ====================
+
+    fun selectBassPreset(preset: BassPreset) {
+        val cached = bassCache[preset]
+        if (cached != null) {
+            audioEngine.setBassSamples(cached)
+            _uiState.update { it.copy(bassPreset = preset) }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingSound = true, bassPreset = preset) }
+            val samples = withContext(Dispatchers.IO) { loadBassPresetSamples(preset) }
+            bassCache[preset] = samples
+            audioEngine.setBassSamples(samples)
+            _uiState.update { it.copy(isLoadingSound = false) }
+        }
+    }
+
+    fun stepBassPreset(delta: Int) {
+        val all = BassPreset.entries
+        val next = (uiState.value.bassPreset.ordinal + delta + all.size) % all.size
+        selectBassPreset(all[next])
+    }
+
+    fun stepBassOctave(delta: Int) {
+        _uiState.update { it.copy(bassOctave = (it.bassOctave + delta).coerceIn(1, 3)) }
+    }
+
+    fun setBassVolume(vol: Float) {
+        val clamped = vol.coerceIn(0f, 1.25f)
+        audioEngine.setBassVolume(clamped)
+        _uiState.update { it.copy(bassVolume = clamped) }
+    }
+
+    fun triggerBassNote(midiNote: Int) {
+        audioEngine.triggerBassNote(midiNote, 0.92f)
+        val state = _uiState.value
+        if (state.liveRecordEnabled && state.isPlaying && !state.songMode) {
+            val step = audioEngine.currentStep()
+            if (step >= 0) {
+                _uiState.update { s ->
+                    val slot = s.selectedSlot
+                    val updatedPattern = s.activePreset.patternFor(slot).withBassNote(step, midiNote)
+                    s.copy(activePreset = s.activePreset.withPattern(slot, updatedPattern))
+                }
+                pushSequencerSnapshot(_uiState.value)
+            }
+        }
+    }
+
+    fun clearBassPattern() {
+        _uiState.update { state ->
+            val slot = state.selectedSlot
+            val cleared = state.activePreset.patternFor(slot).clearBass()
+            state.copy(activePreset = state.activePreset.withPattern(slot, cleared))
+        }
+        pushSequencerSnapshot(_uiState.value)
     }
 
     // ==================== MIXER ====================

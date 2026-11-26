@@ -53,6 +53,11 @@ class DrumAudioEngine(
         val velocity: Float
     )
 
+    private data class BassTrigger(
+        val midiNote: Int,
+        val velocity: Float
+    )
+
     data class SequencerSnapshot(
         val preset: DrumPreset,
         val baseSlot: PatternSlot,
@@ -73,6 +78,10 @@ class DrumAudioEngine(
     private val kitSamples = AtomicReference<Map<DrumInstrument, FloatArray>>(
         BuiltInKitSynthesizer.renderKit(BuiltInKit.ACOUSTIC)
     )
+    private val bassSamples = AtomicReference<Map<Int, FloatArray>>(emptyMap())
+    @Volatile
+    private var bassVolume: Float = 0.78f
+
     private val mixerState = AtomicReference<Map<DrumInstrument, ChannelMix>>(
         DrumInstrument.ALL.associateWith { ChannelMix() }
     )
@@ -82,6 +91,7 @@ class DrumAudioEngine(
     private val metroNormal = BuiltInKitSynthesizer.renderMetronomeClick(accent = false)
 
     private val padQueue = ConcurrentLinkedQueue<PadTrigger>()
+    private val bassQueue = ConcurrentLinkedQueue<BassTrigger>()
     private val voices = Array(MAX_VOICES) { Voice() }
     private var voiceCursor = 0
 
@@ -108,6 +118,18 @@ class DrumAudioEngine(
     }
 
     fun currentKitSamples(): Map<DrumInstrument, FloatArray> = kitSamples.get()
+
+    fun setBassSamples(samples: Map<Int, FloatArray>) {
+        bassSamples.set(samples)
+    }
+
+    fun setBassVolume(vol: Float) {
+        bassVolume = vol.coerceIn(0f, 1.25f)
+    }
+
+    fun triggerBassNote(midiNote: Int, velocity: Float = 0.9f) {
+        bassQueue.add(BassTrigger(midiNote, velocity.coerceIn(0.05f, 1.0f)))
+    }
 
     fun setMixerState(mix: Map<DrumInstrument, ChannelMix>) {
         mixerState.set(mix)
@@ -184,10 +206,14 @@ class DrumAudioEngine(
             track.play()
 
             while (running.get()) {
-                // Drain manual pad triggers immediately at buffer start
+                // Drain manual pad and bass triggers immediately at buffer start
                 while (true) {
                     val hit = padQueue.poll() ?: break
                     spawnDrumVoice(hit.instrument, hit.velocity)
+                }
+                while (true) {
+                    val bass = bassQueue.poll() ?: break
+                    spawnBassVoice(bass.midiNote, bass.velocity)
                 }
 
                 val isPlay = playing.get()
@@ -387,6 +413,29 @@ class DrumAudioEngine(
                 spawnDrumVoice(inst, (baseGain * nextHumanizeFactor()).coerceIn(0.08f, 1.0f))
             }
         }
+        val bassMidi = pattern.bassNotes[step]
+        if (bassMidi != null) {
+            spawnBassVoice(bassMidi, 0.90f)
+        }
+    }
+
+    private fun spawnBassVoice(midiNote: Int, velocity: Float) {
+        val samples = bassSamples.get()[midiNote] ?: return
+        if (samples.size < 2) return
+        // Monophonic bass choke group (2) so new bass notes cleanly replace the previous note
+        for (v in voices) {
+            if (v.active && v.chokeGroup == 2) {
+                v.choking = true
+            }
+        }
+        val gain = (velocity * bassVolume).coerceIn(0f, 1.4f)
+        allocateVoice(
+            samples = samples,
+            pitchRate = 1.0,
+            gainL = gain,
+            gainR = gain,
+            chokeGroup = 2
+        )
     }
 
     private fun spawnDrumVoice(instrument: DrumInstrument, velocity: Float) {
