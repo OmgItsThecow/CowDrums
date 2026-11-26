@@ -1,0 +1,35 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Drum machine 4x2 pad grid emblem -->
+    <path
+        android:fillColor="#F59E0B"
+        android:pathData="M24,30h12v12h-12z" />
+    <path
+        android:fillColor="#EF4444"
+        android:pathData="M40,30h12v12h-12z" />
+    <path
+        android:fillColor="#06B6D4"
+        android:pathData="M56,30h12v12h-12z" />
+    <path
+        android:fillColor="#10B981"
+        android:pathData="M72,30h12v12h-12z" />
+    <path
+        android:fillColor="#8B5CF6"
+        android:pathData="M24,48h12v12h-12z" />
+    <path
+        android:fillColor="#F59E0B"
+        android:pathData="M40,48h12v12h-12z" />
+    <path
+        android:fillColor="#06B6D4"
+        android:pathData="M56,48h12v12h-12z" />
+    <path
+        android:fillColor="#F43F5E"
+        android:pathData="M72,48h12v12h-12z" />
+    <!-- Step sequencer LED bar -->
+    <path
+        android:fillColor="#F59E0B"
+        android:pathData="M24,68h60v6h-60z" />
+</vector>
