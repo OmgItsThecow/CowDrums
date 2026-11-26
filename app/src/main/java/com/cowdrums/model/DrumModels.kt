@@ -139,13 +139,15 @@ enum class PatternSlot(val label: String) {
 
 @Serializable
 enum class DrumGenre(val label: String) {
-    ROCK("Rock"),
+    ROCK("Rock & Indie"),
+    POST_PUNK("Post-Punk & Wave"),
+    REGGAE_SKA("Reggae & Ska"),
+    HIP_HOP("Rap & Hip-Hop"),
+    EDM("Techno & Trance"),
     POP("Pop"),
     FUNK("Funk & Soul"),
-    HIP_HOP("Hip-Hop & Trap"),
-    EDM("EDM & House"),
     JAZZ("Jazz & Blues"),
-    LATIN("Latin & Reggae"),
+    LATIN("Latin"),
     METAL("Metal"),
     ODD_TIME("Odd Time"),
     AFRO_RNB("Afro & R&B"),

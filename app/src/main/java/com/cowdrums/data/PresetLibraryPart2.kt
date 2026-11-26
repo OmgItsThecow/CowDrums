@@ -222,7 +222,7 @@ internal object PresetLibraryPart2 {
         DrumPreset(
             id = "latin_reggae_onedrop",
             name = "Reggae One-Drop",
-            genre = DrumGenre.LATIN,
+            genre = DrumGenre.REGGAE_SKA,
             bpm = 76,
             swing = 0.25f,
             recommendedKit = BuiltInKit.ACOUSTIC,
