@@ -114,7 +114,7 @@ class PresetLibraryAndSynthTest {
         assertTrue("Bundled SF2 missing at ${sf2File.absolutePath}", sf2File.exists())
 
         val presets = SoundFont2Parser.listPresets(sf2File)
-        assertEquals("Expected 18 real studio presets (10 drums + 8 basses)", 18, presets.size)
+        assertEquals("Expected 23 real studio presets (15 drums + 8 basses)", 23, presets.size)
 
         val bytes = sf2File.readBytes()
         for (kit in BuiltInKit.entries) {
