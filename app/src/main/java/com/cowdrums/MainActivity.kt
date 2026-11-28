@@ -1,6 +1,9 @@
 package com.cowdrums
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.graphics.Color as AndroidColor
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -18,7 +21,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -47,9 +49,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.cowdrums.model.DrumInstrument
 import com.cowdrums.ui.components.KitSoundFontSheet
+import com.cowdrums.ui.components.MidiBluetoothDialog
 import com.cowdrums.ui.components.TransportBar
 import com.cowdrums.ui.screens.BassScreen
 import com.cowdrums.ui.screens.MixerScreen
@@ -86,16 +92,29 @@ private enum class CowMode(val title: String, val icon: ImageVector) {
 
 @Composable
 fun CowDrumsApp(vm: DrumMachineViewModel = viewModel()) {
+    val context = LocalContext.current
     val state by vm.uiState.collectAsState()
     var activeMode by remember { mutableStateOf(CowMode.PRESETS) }
     var showMixer by remember { mutableStateOf(false) }
     var showKitSheet by remember { mutableStateOf(false) }
+    var showMidiDialog by remember { mutableStateOf(false) }
+    var pendingWavPad by remember { mutableStateOf<DrumInstrument?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     val sf2PickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) vm.importSoundFont(uri)
+    }
+
+    val wavPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        val targetPad = pendingWavPad
+        pendingWavPad = null
+        if (uri != null && targetPad != null) {
+            vm.loadCustomWavForPad(targetPad, uri)
+        }
     }
 
     val wavExportLauncher = rememberLauncherForActivityResult(
@@ -108,6 +127,30 @@ fun CowDrumsApp(vm: DrumMachineViewModel = viewModel()) {
         contract = ActivityResultContracts.CreateDocument("audio/midi")
     ) { uri ->
         if (uri != null) vm.exportActivePatternMidi(uri)
+    }
+
+    val btPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        if (results.values.all { it }) {
+            vm.startBluetoothMidiScan()
+        }
+    }
+
+    fun requestBluetoothMidiScan() {
+        val needed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
+        } else {
+            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+        val missing = needed.filter {
+            ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isEmpty()) {
+            vm.startBluetoothMidiScan()
+        } else {
+            btPermissionLauncher.launch(missing.toTypedArray())
+        }
     }
 
     LaunchedEffect(state.statusMessage) {
@@ -142,6 +185,10 @@ fun CowDrumsApp(vm: DrumMachineViewModel = viewModel()) {
                     onTapTempo = vm::tapTempo,
                     onSwingChange = vm::setSwing,
                     onOpenKitPicker = { showKitSheet = true },
+                    onOpenMidiDialog = {
+                        vm.refreshMidiDevices()
+                        showMidiDialog = true
+                    },
                     onToggleMixer = { showMixer = !showMixer },
                     mixerOpen = showMixer,
                     onExportWav = {
@@ -226,7 +273,22 @@ fun CowDrumsApp(vm: DrumMachineViewModel = viewModel()) {
                         onClearSlot = vm::clearActiveSlot,
                         onPrevKit = { vm.stepBuiltInKit(-1) },
                         onNextKit = { vm.stepBuiltInKit(1) },
-                        onOpenKitPicker = { showKitSheet = true }
+                        onOpenKitPicker = { showKitSheet = true },
+                        onSelectPadGmSound = vm::setPadGmSound,
+                        onSelectPadKitOverride = vm::setPadKitOverride,
+                        onPickCustomWavForPad = { inst ->
+                            pendingWavPad = inst
+                            wavPickerLauncher.launch(arrayOf("audio/wav", "audio/x-wav", "audio/*"))
+                        },
+                        onResetPadSound = vm::resetPadSound,
+                        onSetPadChokeGroup = vm::setPadChokeGroup,
+                        onStartMidiLearn = vm::startMidiLearn,
+                        onCancelMidiLearn = vm::cancelMidiLearn,
+                        onResetPadMidiNote = { inst -> vm.setPadMidiInputNote(inst, inst.gmNote) },
+                        onSetPadNoteRepeat = vm::setPadNoteRepeat,
+                        onClearPadRow = vm::clearPadInActiveSlot,
+                        onFillPadEveryN = vm::fillPadEveryNSteps,
+                        onHumanizePadRow = vm::humanizePadInActiveSlot
                     )
                     CowMode.SEQUENCER -> SequencerScreen(
                         state = state,
@@ -272,6 +334,24 @@ fun CowDrumsApp(vm: DrumMachineViewModel = viewModel()) {
             onSelectSoundFontPreset = vm::selectSoundFontPreset,
             onDeleteSoundFont = vm::deleteSoundFont,
             onToggleLockKit = vm::toggleLockKit
+        )
+    }
+
+    if (showMidiDialog) {
+        MidiBluetoothDialog(
+            connectedDevices = state.connectedMidiDevices,
+            bleDevices = state.bleMidiDevices,
+            isScanning = state.isScanningBleMidi,
+            lastMidiActivity = state.lastMidiActivity,
+            onScanBluetooth = ::requestBluetoothMidiScan,
+            onStopScan = vm::stopBluetoothMidiScan,
+            onRefreshUsb = vm::refreshMidiDevices,
+            onConnectBleDevice = vm::connectBluetoothMidiDevice,
+            onDisconnectDevice = vm::disconnectMidiDevice,
+            onDismiss = {
+                vm.stopBluetoothMidiScan()
+                showMidiDialog = false
+            }
         )
     }
 }

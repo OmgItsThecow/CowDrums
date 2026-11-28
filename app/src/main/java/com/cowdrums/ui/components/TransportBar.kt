@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Remove
@@ -56,7 +57,7 @@ import com.cowdrums.viewmodel.DrumMachineUiState
 
 /**
  * Clean single-row top bar matching SF Drum Machine's minimal dark hardware aesthetic:
- * [Title] | [Play/Stop] [BPM] [SoundFont] [Mixer] [Menu]
+ * [Title] | [Play/Stop] [BPM] [SoundFont] [Bluetooth MIDI] [Mixer] [Menu]
  */
 @Composable
 fun TransportBar(
@@ -69,6 +70,7 @@ fun TransportBar(
     onTapTempo: () -> Unit,
     onSwingChange: (Float) -> Unit,
     onOpenKitPicker: () -> Unit,
+    onOpenMidiDialog: () -> Unit,
     onToggleMixer: () -> Unit,
     mixerOpen: Boolean,
     onExportWav: () -> Unit,
@@ -77,6 +79,7 @@ fun TransportBar(
 ) {
     var showBpmDialog by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) }
+    val hasMidiConnected = state.connectedMidiDevices.isNotEmpty()
 
     Surface(
         color = CowColors.SurfacePanel,
@@ -145,7 +148,7 @@ fun TransportBar(
                     modifier = Modifier
                         .clip(RoundedCornerShape(6.dp))
                         .clickable { showBpmDialog = true }
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                        .padding(horizontal = 6.dp, vertical = 4.dp)
                 ) {
                     Text(
                         text = "BPM",
@@ -173,30 +176,40 @@ fun TransportBar(
                     modifier = Modifier
                         .clip(RoundedCornerShape(6.dp))
                         .clickable { onOpenKitPicker() }
-                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                        .padding(horizontal = 6.dp, vertical = 6.dp)
                 ) {
                     Text(
                         text = if (state.isLoadingSound) "..." else sfLabel,
                         color = CowColors.TextPrimary,
-                        fontSize = 13.sp,
+                        fontSize = 12.5.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
 
+                // Bluetooth / USB MIDI icon
+                IconButton(onClick = onOpenMidiDialog, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        imageVector = Icons.Default.Bluetooth,
+                        contentDescription = "Bluetooth & USB MIDI",
+                        tint = if (hasMidiConnected) CowColors.AccentOrange else CowColors.TextPrimary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
                 // Mixer icon
-                IconButton(onClick = onToggleMixer, modifier = Modifier.size(38.dp)) {
+                IconButton(onClick = onToggleMixer, modifier = Modifier.size(36.dp)) {
                     Icon(
                         imageVector = Icons.Default.Tune,
                         contentDescription = "Mixer",
                         tint = if (mixerOpen) CowColors.AccentOrange else CowColors.TextPrimary,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(21.dp)
                     )
                 }
 
-                // Overflow Menu (Export WAV, Export MIDI, Load SF2)
+                // Overflow Menu (Bluetooth MIDI, Export WAV, Export MIDI, Load SF2)
                 Box {
-                    IconButton(onClick = { showOverflowMenu = true }, modifier = Modifier.size(36.dp)) {
+                    IconButton(onClick = { showOverflowMenu = true }, modifier = Modifier.size(34.dp)) {
                         Icon(
                             imageVector = Icons.Default.MoreVert,
                             contentDescription = "More",
@@ -209,6 +222,13 @@ fun TransportBar(
                         onDismissRequest = { showOverflowMenu = false },
                         containerColor = CowColors.SurfaceElevated
                     ) {
+                        DropdownMenuItem(
+                            text = { Text("Bluetooth & USB MIDI", color = CowColors.AccentOrange, fontWeight = FontWeight.SemiBold) },
+                            onClick = {
+                                showOverflowMenu = false
+                                onOpenMidiDialog()
+                            }
+                        )
                         DropdownMenuItem(
                             text = { Text("Load SoundFont (.sf2)", color = CowColors.TextPrimary) },
                             onClick = {

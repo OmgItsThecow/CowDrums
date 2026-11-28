@@ -2,12 +2,15 @@ package com.cowdrums.viewmodel
 
 import android.app.Application
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.cowdrums.audio.AndroidMidiBluetoothManager
 import com.cowdrums.audio.AudioMidiExporter
 import com.cowdrums.audio.BuiltInKitSynthesizer
 import com.cowdrums.audio.DrumAudioEngine
 import com.cowdrums.audio.SoundFont2Parser
+import com.cowdrums.audio.WavSampleLoader
 import com.cowdrums.data.CowDrumsRepository
 import com.cowdrums.data.PresetLibrary
 import com.cowdrums.model.BassPreset
@@ -16,7 +19,11 @@ import com.cowdrums.model.ChannelMix
 import com.cowdrums.model.DrumGenre
 import com.cowdrums.model.DrumInstrument
 import com.cowdrums.model.DrumPreset
+import com.cowdrums.model.GmDrumCatalog
 import com.cowdrums.model.LoadedSoundFont
+import com.cowdrums.model.MidiDeviceEntry
+import com.cowdrums.model.NoteRepeatRate
+import com.cowdrums.model.PadConfig
 import com.cowdrums.model.PatternSlot
 import com.cowdrums.model.SongSection
 import com.cowdrums.model.SoundSource
@@ -31,6 +38,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
+import kotlin.random.Random
 
 data class DrumMachineUiState(
     val allPresets: List<DrumPreset> = PresetLibrary.builtInPresets,
@@ -54,6 +62,15 @@ data class DrumMachineUiState(
     val bassOctave: Int = 1,
     val bassVolume: Float = 0.80f,
     val mixer: Map<DrumInstrument, ChannelMix> = DrumInstrument.ALL.associateWith { ChannelMix() },
+    val padConfigs: Map<DrumInstrument, PadConfig> = DrumInstrument.ALL.associateWith {
+        PadConfig(chokeGroup = it.chokeGroup, midiInputNote = it.gmNote)
+    },
+    val midiLearnInstrument: DrumInstrument? = null,
+    val externalPadFlash: Pair<DrumInstrument, Long>? = null,
+    val connectedMidiDevices: List<MidiDeviceEntry> = emptyList(),
+    val bleMidiDevices: List<MidiDeviceEntry> = emptyList(),
+    val isScanningBleMidi: Boolean = false,
+    val lastMidiActivity: String? = null,
     val songMode: Boolean = false,
     val songSections: List<SongSection> = emptyList(),
     val activeSongSectionIndex: Int = 0,
@@ -83,13 +100,32 @@ class DrumMachineViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    private val midiBluetoothManager = AndroidMidiBluetoothManager(
+        context = application.applicationContext,
+        onNoteOn = { ch, note, vel -> onExternalMidiNoteOn(ch, note, vel) },
+        onConnectedDevicesChanged = { list ->
+            _uiState.update { it.copy(connectedMidiDevices = list) }
+        },
+        onBleDevicesChanged = { list ->
+            _uiState.update { it.copy(bleMidiDevices = list) }
+        },
+        onScanningChanged = { scanning ->
+            _uiState.update { it.copy(isScanningBleMidi = scanning) }
+        },
+        onStatus = { msg ->
+            _uiState.update { it.copy(statusMessage = msg) }
+        }
+    )
+
     init {
         val defaultKit = BuiltInKit.ROOM
         val defaultBass = BassPreset.ACOUSTIC_BASS
         audioEngine.setMixerState(_uiState.value.mixer)
+        audioEngine.setPadChokeGroups(_uiState.value.padConfigs.mapValues { it.value.chokeGroup })
         audioEngine.setBassVolume(_uiState.value.bassVolume)
         pushSequencerSnapshot(_uiState.value)
         audioEngine.startEngine()
+        midiBluetoothManager.start()
 
         viewModelScope.launch(Dispatchers.IO) {
             val realSamples = loadBuiltInKitSamples(defaultKit)
@@ -141,6 +177,7 @@ class DrumMachineViewModel(application: Application) : AndroidViewModel(applicat
 
     override fun onCleared() {
         super.onCleared()
+        midiBluetoothManager.close()
         audioEngine.stopEngine()
     }
 
@@ -370,11 +407,21 @@ class DrumMachineViewModel(application: Application) : AndroidViewModel(applicat
         selectBuiltInKit(kits[nextIdx])
     }
 
+    private fun clearPadSoundOverrides(configs: Map<DrumInstrument, PadConfig>): Map<DrumInstrument, PadConfig> =
+        configs.mapValues { (_, cfg) ->
+            cfg.copy(soundGmNote = null, kitOverride = null, customWavName = null)
+        }
+
     fun selectBuiltInKit(kit: BuiltInKit) {
         val cached = kitCache[kit]
         if (cached != null) {
             audioEngine.setKitSamples(cached)
-            _uiState.update { it.copy(soundSource = SoundSource.BuiltIn(kit)) }
+            _uiState.update {
+                it.copy(
+                    soundSource = SoundSource.BuiltIn(kit),
+                    padConfigs = clearPadSoundOverrides(it.padConfigs)
+                )
+            }
             return
         }
         viewModelScope.launch {
@@ -387,6 +434,7 @@ class DrumMachineViewModel(application: Application) : AndroidViewModel(applicat
             _uiState.update {
                 it.copy(
                     soundSource = SoundSource.BuiltIn(kit),
+                    padConfigs = clearPadSoundOverrides(it.padConfigs),
                     isLoadingSound = false
                 )
             }
@@ -439,6 +487,7 @@ class DrumMachineViewModel(application: Application) : AndroidViewModel(applicat
                         preset = preset,
                         presetName = presetName
                     ),
+                    padConfigs = clearPadSoundOverrides(it.padConfigs),
                     isLoadingSound = false,
                     statusMessage = "Active SF2: $presetName"
                 )
@@ -645,6 +694,336 @@ class DrumMachineViewModel(application: Application) : AndroidViewModel(applicat
                 )
             }
         }
+    }
+
+    // ==================== PAD CONTEXT MENU (1, 3, 4) ====================
+
+    fun setPadGmSound(instrument: DrumInstrument, gmNote: Int) {
+        val state = _uiState.value
+        val curCfg = state.padConfigs[instrument] ?: PadConfig(chokeGroup = instrument.chokeGroup, midiInputNote = instrument.gmNote)
+        viewModelScope.launch {
+            val pcm = withContext(Dispatchers.IO) {
+                val overrideKit = curCfg.kitOverride
+                when {
+                    overrideKit != null -> {
+                        val sf2Bytes = repo.loadBundledSf2Bytes() ?: return@withContext null
+                        SoundFont2Parser.loadSingleNoteSample(
+                            bytes = sf2Bytes,
+                            bank = 128,
+                            preset = overrideKit.sf2Preset,
+                            midiNote = gmNote,
+                            applyLoFi = overrideKit.applyLoFiFilter
+                        )
+                    }
+                    state.soundSource is SoundSource.BuiltIn -> {
+                        val sf2Bytes = repo.loadBundledSf2Bytes() ?: return@withContext null
+                        SoundFont2Parser.loadSingleNoteSample(
+                            bytes = sf2Bytes,
+                            bank = 128,
+                            preset = state.soundSource.kit.sf2Preset,
+                            midiNote = gmNote,
+                            applyLoFi = state.soundSource.kit.applyLoFiFilter
+                        ) ?: SoundFont2Parser.loadSingleNoteSample(sf2Bytes, 128, 0, gmNote)
+                    }
+                    state.soundSource is SoundSource.SoundFont -> {
+                        val file = repo.soundFontFile(state.soundSource.fileName)
+                        if (file.exists()) {
+                            SoundFont2Parser.loadSingleNoteSample(
+                                bytes = file.readBytes(),
+                                bank = state.soundSource.bank,
+                                preset = state.soundSource.preset,
+                                midiNote = gmNote
+                            )
+                        } else null
+                    }
+                    else -> null
+                }
+            }
+            if (pcm != null) {
+                audioEngine.setSinglePadSample(instrument, pcm)
+                audioEngine.triggerPad(instrument, 0.92f)
+                _uiState.update { s ->
+                    val next = s.padConfigs.toMutableMap()
+                    val existing = next[instrument] ?: PadConfig(chokeGroup = instrument.chokeGroup, midiInputNote = instrument.gmNote)
+                    next[instrument] = existing.copy(soundGmNote = gmNote, customWavName = null)
+                    s.copy(
+                        padConfigs = next,
+                        statusMessage = "${instrument.displayName} → ${GmDrumCatalog.nameFor(gmNote)} (GM $gmNote)"
+                    )
+                }
+            } else {
+                _uiState.update { it.copy(statusMessage = "GM Note $gmNote not available in current SoundFont") }
+            }
+        }
+    }
+
+    fun setPadKitOverride(instrument: DrumInstrument, kit: BuiltInKit) {
+        val curCfg = _uiState.value.padConfigs[instrument] ?: PadConfig(chokeGroup = instrument.chokeGroup, midiInputNote = instrument.gmNote)
+        val targetNote = curCfg.soundGmNote ?: instrument.gmNote
+        viewModelScope.launch {
+            val pcm = withContext(Dispatchers.IO) {
+                val sf2Bytes = repo.loadBundledSf2Bytes() ?: return@withContext null
+                SoundFont2Parser.loadSingleNoteSample(
+                    bytes = sf2Bytes,
+                    bank = 128,
+                    preset = kit.sf2Preset,
+                    midiNote = targetNote,
+                    applyLoFi = kit.applyLoFiFilter
+                ) ?: loadBuiltInKitSamples(kit)[instrument]
+            }
+            if (pcm != null) {
+                audioEngine.setSinglePadSample(instrument, pcm)
+                audioEngine.triggerPad(instrument, 0.92f)
+                _uiState.update { s ->
+                    val next = s.padConfigs.toMutableMap()
+                    val existing = next[instrument] ?: PadConfig(chokeGroup = instrument.chokeGroup, midiInputNote = instrument.gmNote)
+                    next[instrument] = existing.copy(kitOverride = kit, customWavName = null)
+                    s.copy(
+                        padConfigs = next,
+                        statusMessage = "${instrument.displayName} kit → ${kit.displayName}"
+                    )
+                }
+            }
+        }
+    }
+
+    fun loadCustomWavForPad(instrument: DrumInstrument, uri: Uri) {
+        viewModelScope.launch {
+            val resolver = getApplication<Application>().contentResolver
+            val (pcm, displayName) = withContext(Dispatchers.IO) {
+                val name = runCatching {
+                    resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                        if (c.moveToFirst()) c.getString(0) else null
+                    }
+                }.getOrNull() ?: "Custom Sample"
+                val bytes = runCatching { resolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
+                val decoded = bytes?.let { WavSampleLoader.decodeWavToMono44k(it) }
+                decoded to name.substringBeforeLast('.')
+            }
+            if (pcm != null) {
+                audioEngine.setSinglePadSample(instrument, pcm)
+                audioEngine.triggerPad(instrument, 0.92f)
+                _uiState.update { s ->
+                    val next = s.padConfigs.toMutableMap()
+                    val existing = next[instrument] ?: PadConfig(chokeGroup = instrument.chokeGroup, midiInputNote = instrument.gmNote)
+                    next[instrument] = existing.copy(
+                        customWavName = displayName,
+                        soundGmNote = null,
+                        kitOverride = null
+                    )
+                    s.copy(
+                        padConfigs = next,
+                        statusMessage = "Loaded WAV \"$displayName\" onto ${instrument.displayName}"
+                    )
+                }
+            } else {
+                _uiState.update { it.copy(statusMessage = "Unsupported WAV file selected") }
+            }
+        }
+    }
+
+    fun resetPadSound(instrument: DrumInstrument) {
+        val src = _uiState.value.soundSource
+        viewModelScope.launch {
+            val pcm = withContext(Dispatchers.IO) {
+                when (src) {
+                    is SoundSource.BuiltIn -> {
+                        val map = kitCache[src.kit] ?: loadBuiltInKitSamples(src.kit).also { kitCache[src.kit] = it }
+                        map[instrument]
+                    }
+                    is SoundSource.SoundFont -> {
+                        SoundFont2Parser.loadKitSamples(repo.soundFontFile(src.fileName), src.bank, src.preset)[instrument]
+                    }
+                }
+            }
+            if (pcm != null) {
+                audioEngine.setSinglePadSample(instrument, pcm)
+                audioEngine.triggerPad(instrument, 0.90f)
+            }
+            _uiState.update { s ->
+                val next = s.padConfigs.toMutableMap()
+                val existing = next[instrument] ?: PadConfig(chokeGroup = instrument.chokeGroup, midiInputNote = instrument.gmNote)
+                next[instrument] = existing.copy(soundGmNote = null, kitOverride = null, customWavName = null)
+                s.copy(
+                    padConfigs = next,
+                    statusMessage = "Reset ${instrument.displayName} to kit default"
+                )
+            }
+        }
+    }
+
+    fun setPadChokeGroup(instrument: DrumInstrument, group: Int) {
+        val clamped = group.coerceIn(0, 3)
+        _uiState.update { s ->
+            val next = s.padConfigs.toMutableMap()
+            val existing = next[instrument] ?: PadConfig(chokeGroup = instrument.chokeGroup, midiInputNote = instrument.gmNote)
+            next[instrument] = existing.copy(chokeGroup = clamped)
+            s.copy(padConfigs = next)
+        }
+        audioEngine.setPadChokeGroups(_uiState.value.padConfigs.mapValues { it.value.chokeGroup })
+    }
+
+    fun startMidiLearn(instrument: DrumInstrument) {
+        _uiState.update {
+            it.copy(
+                midiLearnInstrument = instrument,
+                statusMessage = "MIDI Learn: press any pad/key on your MIDI controller for ${instrument.displayName}..."
+            )
+        }
+    }
+
+    fun cancelMidiLearn() {
+        _uiState.update { it.copy(midiLearnInstrument = null) }
+    }
+
+    fun setPadMidiInputNote(instrument: DrumInstrument, midiNote: Int) {
+        val clamped = midiNote.coerceIn(0, 127)
+        _uiState.update { s ->
+            val next = s.padConfigs.toMutableMap()
+            val existing = next[instrument] ?: PadConfig(chokeGroup = instrument.chokeGroup, midiInputNote = instrument.gmNote)
+            next[instrument] = existing.copy(midiInputNote = clamped)
+            s.copy(
+                padConfigs = next,
+                midiLearnInstrument = if (s.midiLearnInstrument == instrument) null else s.midiLearnInstrument,
+                statusMessage = "${instrument.displayName} MIDI input → ${GmDrumCatalog.midiNoteLabel(clamped)}"
+            )
+        }
+    }
+
+    fun setPadNoteRepeat(instrument: DrumInstrument, rate: NoteRepeatRate) {
+        _uiState.update { s ->
+            val next = s.padConfigs.toMutableMap()
+            val existing = next[instrument] ?: PadConfig(chokeGroup = instrument.chokeGroup, midiInputNote = instrument.gmNote)
+            next[instrument] = existing.copy(noteRepeat = rate)
+            s.copy(padConfigs = next)
+        }
+    }
+
+    fun clearPadInActiveSlot(instrument: DrumInstrument) {
+        _uiState.update { state ->
+            val slot = state.selectedSlot
+            val pat = state.activePreset.patternFor(slot)
+            val updatedRows = pat.rows.toMutableMap().apply { remove(instrument.name) }
+            val updatedPreset = state.activePreset.withPattern(slot, pat.copy(rows = updatedRows))
+            state.copy(
+                activePreset = updatedPreset,
+                statusMessage = "Cleared ${instrument.displayName} from ${slot.label}"
+            )
+        }
+        pushSequencerSnapshot(_uiState.value)
+    }
+
+    fun fillPadEveryNSteps(instrument: DrumInstrument, everyN: Int) {
+        val stepStride = everyN.coerceAtLeast(1)
+        _uiState.update { state ->
+            val slot = state.selectedSlot
+            val pat = state.activePreset.patternFor(slot)
+            val list = MutableList(pat.stepCount) { step ->
+                if (step % stepStride == 0) {
+                    if (step % 4 == 0) StepVelocity.ACCENT else StepVelocity.MEDIUM
+                } else {
+                    StepVelocity.OFF
+                }
+            }
+            val updatedRows = pat.rows.toMutableMap().apply { put(instrument.name, list) }
+            val updatedPreset = state.activePreset.withPattern(slot, pat.copy(rows = updatedRows))
+            state.copy(
+                activePreset = updatedPreset,
+                statusMessage = "Filled ${instrument.displayName} every $stepStride step(s) in ${slot.label}"
+            )
+        }
+        pushSequencerSnapshot(_uiState.value)
+    }
+
+    fun humanizePadInActiveSlot(instrument: DrumInstrument) {
+        _uiState.update { state ->
+            val slot = state.selectedSlot
+            val pat = state.activePreset.patternFor(slot)
+            val existing = pat.rows[instrument.name] ?: return@update state.copy(
+                statusMessage = "No ${instrument.displayName} hits to humanize in ${slot.label}"
+            )
+            val humanized = existing.mapIndexed { idx, v ->
+                if (v <= 0) 0
+                else if (idx % 4 == 0) if (Random.nextFloat() < 0.72f) StepVelocity.ACCENT else StepVelocity.MEDIUM
+                else when (Random.nextInt(3)) {
+                    0 -> StepVelocity.SOFT
+                    1 -> StepVelocity.MEDIUM
+                    else -> if (idx % 2 == 0) StepVelocity.MEDIUM else StepVelocity.SOFT
+                }
+            }
+            val updatedRows = pat.rows.toMutableMap().apply { put(instrument.name, humanized) }
+            val updatedPreset = state.activePreset.withPattern(slot, pat.copy(rows = updatedRows))
+            state.copy(
+                activePreset = updatedPreset,
+                statusMessage = "Humanized ${instrument.displayName} velocity in ${slot.label}"
+            )
+        }
+        pushSequencerSnapshot(_uiState.value)
+    }
+
+    // ==================== BLUETOOTH LE & USB MIDI ====================
+
+    fun startBluetoothMidiScan() = midiBluetoothManager.startBluetoothMidiScan()
+
+    fun stopBluetoothMidiScan() = midiBluetoothManager.stopBluetoothMidiScan()
+
+    fun refreshMidiDevices() = midiBluetoothManager.refreshConnectedDevices()
+
+    fun connectBluetoothMidiDevice(address: String) = midiBluetoothManager.connectBluetoothDevice(address)
+
+    fun disconnectMidiDevice(id: String) = midiBluetoothManager.disconnectDevice(id)
+
+    private fun onExternalMidiNoteOn(channel: Int, note: Int, velocity: Float) {
+        val state = _uiState.value
+        val velInt = (velocity * 127f).toInt().coerceIn(1, 127)
+        val activity = "Ch ${channel + 1} · ${GmDrumCatalog.midiNoteLabel(note)} · Vel $velInt"
+
+        val learnTarget = state.midiLearnInstrument
+        if (learnTarget != null) {
+            setPadMidiInputNote(learnTarget, note)
+            triggerPad(learnTarget, velocity)
+            _uiState.update {
+                it.copy(
+                    lastMidiActivity = activity,
+                    externalPadFlash = learnTarget to System.currentTimeMillis()
+                )
+            }
+            return
+        }
+
+        val matchedPads = DrumInstrument.ALL.filter { inst ->
+            val mapped = state.padConfigs[inst]?.midiInputNote ?: inst.gmNote
+            mapped == note
+        }
+        if (matchedPads.isNotEmpty()) {
+            for (inst in matchedPads) {
+                triggerPad(inst, velocity)
+            }
+            _uiState.update {
+                it.copy(
+                    lastMidiActivity = activity,
+                    externalPadFlash = matchedPads.first() to System.currentTimeMillis()
+                )
+            }
+            return
+        }
+
+        val alias = DrumInstrument.ALL.firstOrNull { note in it.fallbackGmNotes }
+        if (alias != null) {
+            triggerPad(alias, velocity)
+            _uiState.update {
+                it.copy(
+                    lastMidiActivity = activity,
+                    externalPadFlash = alias to System.currentTimeMillis()
+                )
+            }
+            return
+        }
+
+        if (note in 24..59) {
+            triggerBassNote(note)
+        }
+        _uiState.update { it.copy(lastMidiActivity = activity) }
     }
 
     fun clearStatusMessage() {
